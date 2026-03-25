@@ -20,6 +20,7 @@ from slidebuddy.db.helpers import load_versioned_states, save_versioned_state
 from slidebuddy.db.models import Slide, Version
 from slidebuddy.db.queries import (
     create_slide,
+    create_version,
     get_chapters_for_project,
     get_project,
     update_chapter_status,
