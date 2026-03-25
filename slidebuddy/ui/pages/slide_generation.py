@@ -17,7 +17,7 @@ from slidebuddy.core.nodes.slide_generation import (
 from slidebuddy.core.progress import detect_project_step
 from slidebuddy.db.migrations import get_connection
 from slidebuddy.db.helpers import load_versioned_states, save_versioned_state
-from slidebuddy.db.models import Slide
+from slidebuddy.db.models import Slide, Version
 from slidebuddy.db.queries import (
     create_slide,
     get_chapters_for_project,
