@@ -1,0 +1,17 @@
+TEMPLATE: title (Startfolie / Kapitelteiler)
+
+BESCHREIBUNG: Titelfolie mit großem Haupttitel und optionalem Untertitel. Wird als Einstiegsfolie oder Kapitelteiler verwendet.
+
+CONTENT-STRUKTUR:
+Kein zusätzlicher Content nötig — nur title und subtitle.
+
+JSON-SCHEMA:
+{
+    "title": "str — Großer Haupttitel",
+    "subtitle": "str | null — Optionaler Untertitel"
+}
+
+HINWEISE:
+- Titel sollte prägnant und einprägsam sein (max. 8 Wörter)
+- Untertitel kann eine ergänzende Aussage oder den Zeitrahmen enthalten
+- Sprechernotizen enthalten die Begrüßung oder Kapitelüberleitung

@@ -1,0 +1,28 @@
+SEKTIONSPLANUNG (EBENE 2):
+
+Erstelle für das folgende Kapitel einen detaillierten Folienplan. Weise jeder Folie ein Template zu.
+
+Verwende AUSSCHLIESSLICH die Templates aus dem Abschnitt TEMPLATE-DEFINITIONEN weiter unten.
+Erfinde KEINE eigenen Template-Namen — nutze nur die dort aufgelisteten template_type Werte.
+
+Für jede Folie definiere:
+- template_type: Welches Template verwendet wird (muss exakt einem der verfuegbaren Templates entsprechen)
+- brief: Kurzbeschreibung des Folieninhalts (1-2 Sätze)
+- reused_slide_id: ID einer wiederverwendbaren Slide aus der RAG-DB oder null
+
+Antworte im JSON-Format:
+{
+    "slides": [
+        {
+            "template_type": "str",
+            "brief": "str",
+            "reused_slide_id": "str | null"
+        }
+    ],
+    "reasoning": "Begründung für Template-Auswahl und Reihenfolge"
+}
+
+RICHTLINIEN:
+- Template-Variation: Nicht mehr als 2 gleiche Templates in Folge
+- Template-Auswahl passend zum Inhalt (Vergleiche → Vergleichs-Template, Schritte → Aufzaehlungs-Template, etc.)
+- Wenn RAG-Treffer gut passen, als reused_slide_id markieren

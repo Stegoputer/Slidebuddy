@@ -1,0 +1,20 @@
+TEMPLATE: numbered (Nummerierte Punkte)
+
+BESCHREIBUNG: Folie mit 3-5 nummerierten Punkten. Ideal für Schritte, Prioritäten oder Top-N-Listen.
+
+CONTENT-STRUKTUR:
+- points: Liste von 3-5 nummerierten Einträgen mit Heading und Text
+
+JSON-SCHEMA:
+{
+    "points": [
+        {"number": 1, "heading": "str", "text": "str"},
+        {"number": 2, "heading": "str", "text": "str"},
+        {"number": 3, "heading": "str", "text": "str"}
+    ]
+}
+
+HINWEISE:
+- Mindestens 3, maximal 5 Punkte
+- Jeder Punkt hat ein kurzes Heading (2-5 Wörter) und einen erklärenden Text (1-2 Sätze)
+- Reihenfolge sollte logisch sein (chronologisch, nach Priorität, etc.)

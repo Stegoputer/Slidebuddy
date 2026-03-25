@@ -1,0 +1,21 @@
+TEMPLATE: two_column (Zwei-Spalten-Vergleich)
+
+BESCHREIBUNG: Folie mit zwei nebeneinanderliegenden Boxen für Vergleiche, Pro/Contra, Vorher/Nachher oder ergänzende Aspekte.
+
+CONTENT-STRUKTUR:
+- left_box: Linke Spalte mit Heading und Text
+- right_box: Rechte Spalte mit Heading und Text
+- conclusion: Optionales Fazit-Statement unter beiden Spalten
+
+JSON-SCHEMA:
+{
+    "left_box": {"heading": "str", "text": "str"},
+    "right_box": {"heading": "str", "text": "str"},
+    "conclusion": "str | null"
+}
+
+HINWEISE:
+- Beide Spalten sollten ungefähr gleich lang sein
+- Headings der Spalten sollten den Vergleich verdeutlichen
+- Text pro Spalte: 2-4 Sätze oder Aufzählungspunkte
+- Conclusion fasst die Kernaussage zusammen

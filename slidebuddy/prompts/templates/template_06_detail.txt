@@ -1,0 +1,31 @@
+TEMPLATE: detail (Detail-Folie mit Sektionen)
+
+BESCHREIBUNG: Folie mit 2 Sektionen, die jeweils mehrere Bullet-Points mit Heading und Text enthalten. Für detailreiche Inhalte.
+
+CONTENT-STRUKTUR:
+- sections: 2 Sektionen mit jeweils einem Heading und einer Liste von Bullets
+
+JSON-SCHEMA:
+{
+    "sections": [
+        {
+            "heading": "str",
+            "bullets": [
+                {"heading": "str", "text": "str"},
+                {"heading": "str", "text": "str"}
+            ]
+        },
+        {
+            "heading": "str",
+            "bullets": [
+                {"heading": "str", "text": "str"},
+                {"heading": "str", "text": "str"}
+            ]
+        }
+    ]
+}
+
+HINWEISE:
+- Exakt 2 Sektionen
+- Pro Sektion 2-4 Bullet-Points
+- Bullet-Headings: 2-5 Wörter, Bullet-Text: 1-2 Sätze

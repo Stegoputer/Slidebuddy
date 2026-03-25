@@ -1,0 +1,22 @@
+TEMPLATE: grid (2x2 Raster)
+
+BESCHREIBUNG: Folie mit vier Boxen in einem 2x2-Raster. Ideal für Quadrantenmodelle, vier Kategorien oder Übersichten.
+
+CONTENT-STRUKTUR:
+- boxes: Genau 4 Boxen mit jeweils Heading und Text
+
+JSON-SCHEMA:
+{
+    "boxes": [
+        {"heading": "str", "text": "str"},
+        {"heading": "str", "text": "str"},
+        {"heading": "str", "text": "str"},
+        {"heading": "str", "text": "str"}
+    ]
+}
+
+HINWEISE:
+- Exakt 4 Boxen
+- Reihenfolge: oben-links, oben-rechts, unten-links, unten-rechts
+- Alle Boxen ungefähr gleich lang
+- Headings kurz und prägnant (2-4 Wörter)

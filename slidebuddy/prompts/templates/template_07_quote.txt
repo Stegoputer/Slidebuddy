@@ -1,0 +1,17 @@
+TEMPLATE: quote (Zitat-Folie)
+
+BESCHREIBUNG: Folie mit einem zentralen Text/Zitat. Minimales Layout für maximale Wirkung.
+
+CONTENT-STRUKTUR:
+- text: Der zentrale Text (1-3 Sätze)
+
+JSON-SCHEMA:
+{
+    "text": "str — 1-3 Sätze, zentral dargestellt"
+}
+
+HINWEISE:
+- Kann ein echtes Zitat sein (mit Quellenangabe in Sprechernotizen)
+- Oder eine zentrale Aussage / These / Erkenntnis
+- Kein title/subtitle nötig — nur der Text steht im Fokus
+- Sprechernotizen erklären den Kontext und die Bedeutung des Zitats

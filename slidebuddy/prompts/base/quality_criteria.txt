@@ -1,0 +1,10 @@
+QUALITÄTSKRITERIEN:
+
+- Jede Folie hat eine klare Kernaussage
+- Content ist faktisch korrekt und quellenbasiert
+- Keine Wiederholungen zwischen Folien
+- Sprechernotizen ergänzen die Folie, wiederholen sie nicht einfach
+- Roter Faden: Jede Folie baut logisch auf der vorherigen auf
+- Template-Vorgaben werden exakt eingehalten (Anzahl Punkte, Spalten etc.)
+- Fachbegriffe werden konsistent verwendet
+- Keine leeren Floskeln oder Füllsätze

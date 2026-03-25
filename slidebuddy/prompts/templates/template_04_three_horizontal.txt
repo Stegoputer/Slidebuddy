@@ -1,0 +1,20 @@
+TEMPLATE: three_horizontal (Drei horizontale Spalten)
+
+BESCHREIBUNG: Folie mit genau drei gleichberechtigten Spalten nebeneinander. Ideal für drei Kategorien, Phasen oder Aspekte.
+
+CONTENT-STRUKTUR:
+- columns: Genau 3 Spalten mit jeweils Heading und Text
+
+JSON-SCHEMA:
+{
+    "columns": [
+        {"heading": "str", "text": "str"},
+        {"heading": "str", "text": "str"},
+        {"heading": "str", "text": "str"}
+    ]
+}
+
+HINWEISE:
+- Exakt 3 Spalten (nicht mehr, nicht weniger)
+- Alle Spalten ungefähr gleich lang
+- Headings sollten parallel formuliert sein

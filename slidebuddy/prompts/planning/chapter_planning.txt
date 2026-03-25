@@ -1,0 +1,45 @@
+KAPITELPLANUNG MIT QUELLEN-ANALYSE (EBENE 1):
+
+Erstelle eine Kapitelstruktur für die Präsentation basierend auf:
+1. Dem Thema und den verfügbaren Quellen
+2. Der gewünschten Sprache und Zielgruppe
+3. Einem logischen Aufbau mit Einleitung, Hauptteil und Schluss
+
+Analysiere gleichzeitig die Quellenlage pro Kapitel und identifiziere substanzielle Lücken.
+
+Für jedes Kapitel definiere:
+- title: Aussagekräftiger Kapiteltitel
+- summary: 2-3 Sätze, die den Inhalt des Kapitels beschreiben
+- estimated_slide_count: Geschätzte Anzahl Folien (3-12 pro Kapitel)
+- key_topics: Wichtigste Themen, die in diesem Kapitel behandelt werden
+- source_coverage: "good" | "partial" | "weak" — Wie gut decken die Quellen dieses Kapitel ab?
+
+Antworte im JSON-Format:
+{
+    "chapters": [
+        {
+            "title": "str",
+            "summary": "str",
+            "estimated_slide_count": int,
+            "key_topics": ["str", ...],
+            "source_coverage": "good | partial | weak"
+        }
+    ],
+    "source_gaps": [
+        {
+            "chapter_title": "str — Betroffenes Kapitel",
+            "description": "str — Was fehlt konkret",
+            "severity": "low | medium | high"
+        }
+    ],
+    "total_estimated_slides": int,
+    "reasoning": "Kurze Begründung für diese Struktur"
+}
+
+RICHTLINIEN:
+- Mindestens 3 Kapitel, maximal 8
+- Gesamtfolienanzahl zwischen 15 und 50
+- Einleitung und Schluss/Fazit jeweils als eigenes Kapitel
+- Kapitel sollten inhaltlich abgeschlossen sein
+- source_gaps nur auflisten wenn die Lücke substanziell ist
+- source_coverage: "good" = Quellen decken das Thema vollständig ab, "partial" = teilweise abgedeckt, "weak" = kaum oder keine Quellen vorhanden
