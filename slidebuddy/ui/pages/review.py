@@ -9,6 +9,7 @@ from slidebuddy.db.queries import (
     get_project,
     get_slides_for_project,
 )
+from slidebuddy.export.pptx_exporter import export_pptx
 from slidebuddy.export.txt_exporter import export_gen_slides_txt, export_txt
 from slidebuddy.ui.components.slide_card import render_slide_card
 from slidebuddy.ui.components.stepbar import render_stepbar
@@ -43,12 +44,12 @@ def render_review():
 
     # Export buttons
     st.subheader("Export")
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
         if slides_db:
             txt = export_txt(project.name, chapters, slides_db)
             st.download_button(
-                "Freigegebene Folien als TXT",
+                "Freigegebene als TXT",
                 data=txt,
                 file_name=f"{project.name.replace(' ', '_')}_final.txt",
                 mime="text/plain",
@@ -64,6 +65,19 @@ def render_review():
                 mime="text/plain",
                 use_container_width=True,
             )
+    with col3:
+        if gen_slides and any(gen_slides.values()):
+            try:
+                pptx_bytes = export_pptx(project.name, gen_slides, chapters)
+                st.download_button(
+                    "Als PPTX herunterladen",
+                    data=pptx_bytes,
+                    file_name=f"{project.name.replace(' ', '_')}.pptx",
+                    mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                    use_container_width=True,
+                )
+            except Exception as e:
+                st.error(f"PPTX-Export fehlgeschlagen: {e}")
 
     st.divider()
 
