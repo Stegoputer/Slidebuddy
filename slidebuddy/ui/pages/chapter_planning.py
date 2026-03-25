@@ -373,7 +373,10 @@ def _render_replan_button(project, conn):
         col_yes, col_no, _ = st.columns([1, 1, 4])
         with col_yes:
             if st.button("Ja, neu planen", type="primary", key="ch_replan_yes"):
+                # Delete all subsequent steps (sections + generation)
                 delete_steps_after(conn, project.id, "chapters")
+                # Also delete chapters themselves from DB so _load_plan_from_db won't reload them
+                _delete_chapter_data(conn, project.id)
                 _do_replan()
                 st.session_state.pop(confirm_key, None)
                 st.rerun()
@@ -387,8 +390,20 @@ def _render_replan_button(project, conn):
                 st.session_state[confirm_key] = True
                 st.rerun()
             else:
+                _delete_chapter_data(conn, project.id)
                 _do_replan()
                 st.rerun()
+
+
+def _delete_chapter_data(conn, project_id: str):
+    """Remove chapter plan and chapters from DB so re-planning starts fresh."""
+    conn.execute("DELETE FROM source_gaps WHERE project_id = ?", (project_id,))
+    conn.execute("DELETE FROM chapters WHERE project_id = ?", (project_id,))
+    conn.execute(
+        "DELETE FROM versions WHERE project_id = ? AND state = ?",
+        (project_id, _PLAN_VERSION_LABEL),
+    )
+    conn.commit()
 
 
 def _do_replan():
