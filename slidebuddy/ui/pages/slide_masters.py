@@ -59,6 +59,31 @@ def render_slide_masters():
 def _render_upload(conn):
     st.subheader("Neuen Folienmaster importieren")
 
+    with st.expander("Anleitung: Placeholder-Benennung in PowerPoint", expanded=False):
+        st.markdown("""
+Damit SlideBuddy die Textfelder korrekt erkennt, muessen die Placeholder in PowerPoint **beschreibend benannt** werden.
+
+**So geht's:** `Ansicht → Folienmaster → Placeholder anklicken → Auswahlbereich (Alt+F10) → Name aendern`
+
+| Namenskonvention | Bedeutung | Beispiel |
+|---|---|---|
+| `title_placeholder` | Folientitel | Hauptueberschrift |
+| `subheading1_placeholder` | Zwischenueberschrift | Abschnitt-Titel (2-5 Woerter) |
+| `text1_placeholder` | Fliesstext | Inhaltlicher Abschnitt (Saetze) |
+| `bulletpoint1_placeholder` | Stichpunkt | Ein einzelner Aufzaehlungspunkt |
+| `quote1_placeholder` | Zitat | Praegnantes Zitat oder These |
+| `statement_placeholder` | Statement | Zentrale Aussage |
+| `person1_placeholder` | Person | Name + Rolle/Titel |
+| `conclusion_placeholder` | Fazit | Zusammenfassender Satz |
+| `bridge_placeholder` | Ueberleitung | Verbindung zwischen Abschnitten |
+| `image1_placeholder` | Bild | Wird vom Nutzer manuell eingefuegt |
+| `count1_placeholder` | Zaehler | Nummerierung (z.B. "01") |
+
+**Nummerierung:** Bei mehreren Feldern gleichen Typs: `text1_placeholder`, `text2_placeholder`, `text3_placeholder`
+
+**Wichtig:** Generische Namen wie `Content Placeholder 2` fuehren zu schlechteren Ergebnissen — das LLM kann nicht erkennen, ob es ein Titel, Fliesstext oder Zitat ist.
+""")
+
     uploaded = st.file_uploader(
         "PowerPoint-Datei (.pptx) hochladen",
         type=["pptx"],
