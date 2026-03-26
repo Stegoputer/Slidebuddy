@@ -35,6 +35,10 @@ def render_slide_masters():
     st.header("Folienmaster")
     st.caption("Importiere einen PowerPoint-Folienmaster um eigene Layouts zu nutzen.")
 
+    # Show persistent warnings from previous import
+    if "_master_import_warning" in st.session_state:
+        st.warning(st.session_state.pop("_master_import_warning"))
+
     conn = get_connection(DB_PATH)
 
     # Upload section
@@ -71,8 +75,15 @@ def _render_upload(conn):
             key="master_name_input",
         )
 
-        if st.button("Analysieren und importieren", type="primary"):
-            _import_master(conn, uploaded, master_name)
+        if st.button("Analysieren und importieren", type="primary", key="import_master_btn"):
+            # Prevent double-import on rerun
+            if st.session_state.get("_master_importing"):
+                return
+            st.session_state["_master_importing"] = True
+            try:
+                _import_master(conn, uploaded, master_name)
+            finally:
+                st.session_state.pop("_master_importing", None)
 
 
 def _import_master(conn, uploaded_file, name: str):
@@ -190,7 +201,9 @@ def _get_llm_suggestions(layouts: list[dict]) -> list[dict] | None:
             return result
         return None
     except Exception as e:
-        st.warning(f"LLM-Analyse fehlgeschlagen: {e}. Verwende Standard-Werte.")
+        import logging
+        logging.getLogger(__name__).warning(f"LLM master analysis failed: {e}")
+        st.session_state["_master_import_warning"] = f"LLM-Analyse fehlgeschlagen: {e}. Verwende Standard-Werte."
         return None
 
 
