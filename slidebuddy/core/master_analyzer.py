@@ -10,6 +10,22 @@ import re
 
 from pptx import Presentation
 
+# Generic OBJECT placeholder names that are decorative, not content
+_GENERIC_OBJECT_PATTERNS = re.compile(
+    r"^(Inhaltsplatzhalter|Content Placeholder|Platzhalter|Placeholder|Shadow|Rectangle|Oval|"
+    r"Freeform|TextBox|Text Box|Group|Picture)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_named_object(name: str) -> bool:
+    """Check if an OBJECT placeholder has a descriptive (user-assigned) name.
+
+    Returns True for names like 'count1_placeholder', 'conclusion_placeholder'.
+    Returns False for generic names like 'Inhaltsplatzhalter 4', 'Shadow'.
+    """
+    return not bool(_GENERIC_OBJECT_PATTERNS.match(name))
+
 
 def analyze_master(file_path: str) -> list[dict]:
     """Parse a PPTX master and return structured layout info.
@@ -48,11 +64,18 @@ def analyze_master(file_path: str) -> list[dict]:
             }
             readable_type = type_map.get(str(ph.placeholder_format.type), str(ph.placeholder_format.type))
 
+            # OBJECT placeholders: only include if they have a descriptive name
+            # (not generic PowerPoint defaults like "Inhaltsplatzhalter 4")
+            if readable_type == "OBJECT":
+                is_content = _is_named_object(ph.name)
+            else:
+                is_content = readable_type in ("TITLE", "BODY", "PICTURE")
+
             placeholders.append({
                 "idx": ph.placeholder_format.idx,
                 "name": ph.name,
                 "type": readable_type,
-                "is_content": readable_type in ("TITLE", "BODY", "PICTURE", "OBJECT"),
+                "is_content": is_content,
                 "position": {
                     "left": round(ph.left / 914400, 2),
                     "top": round(ph.top / 914400, 2),
