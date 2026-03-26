@@ -193,12 +193,18 @@ def _fetch_google_models(api_key: str) -> list[str]:
     import google.generativeai as genai
     genai.configure(api_key=api_key)
     models = genai.list_models()
-    # Filter to generative models that support generateContent
-    gemini_models = sorted(
-        m.name.replace("models/", "")
-        for m in models
-        if "generateContent" in (m.supported_generation_methods or [])
-        and "gemini" in m.name
-    )
-    return gemini_models if gemini_models else _FALLBACK_MODELS["google"]
+    # Filter: only current gemini models that support generateContent
+    # Exclude deprecated/old versions (1.0, 001, embedding, aqa, etc.)
+    _SKIP_PATTERNS = ("gemini-1.0", "embedding", "aqa", "bisheng")
+    gemini_models = []
+    for m in models:
+        name = m.name.replace("models/", "")
+        if "gemini" not in name:
+            continue
+        if "generateContent" not in (m.supported_generation_methods or []):
+            continue
+        if any(skip in name for skip in _SKIP_PATTERNS):
+            continue
+        gemini_models.append(name)
+    return sorted(gemini_models) if gemini_models else _FALLBACK_MODELS["google"]
 
