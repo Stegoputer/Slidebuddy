@@ -10,6 +10,7 @@ from slidebuddy.core.master_analyzer import (
     build_content_schema,
     build_generation_prompt,
     build_llm_analysis_prompt,
+    estimate_text_capacity,
     generate_template_key,
 )
 from slidebuddy.db.migrations import get_connection
@@ -131,7 +132,11 @@ def _import_master(conn, uploaded_file, name: str):
             layout["content_placeholders"],
             content_schema,
         )
-        # If LLM provided extra hints, append them
+        # Prepend LLM-generated purpose if available
+        purpose = suggestion.get("purpose", "")
+        if purpose:
+            auto_prompt = f'- ZIEL dieser "{layout["layout_name"]}"-Folie: {purpose}\n' + auto_prompt
+        # Append LLM-generated hints
         llm_prompt = suggestion.get("generation_prompt", "")
         if llm_prompt:
             generation_prompt = auto_prompt + "\n" + llm_prompt
@@ -146,8 +151,13 @@ def _import_master(conn, uploaded_file, name: str):
             display_name=suggestion.get("display_name", layout["layout_name"]),
             description=suggestion.get("description", layout["structure_summary"]),
             placeholder_schema=json.dumps(
-                [{"name": p["name"], "type": p["type"], "idx": p["idx"]}
-                 for p in layout["content_placeholders"]],
+                [{
+                    "name": p["name"],
+                    "type": p["type"],
+                    "idx": p["idx"],
+                    "size": p["size"],
+                    "text_capacity": estimate_text_capacity(p),
+                } for p in layout["content_placeholders"]],
                 ensure_ascii=False,
             ),
             content_schema=json.dumps(content_schema, ensure_ascii=False),

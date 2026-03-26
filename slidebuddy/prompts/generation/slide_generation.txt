@@ -16,11 +16,13 @@ STIL:
 - Konkrete Zahlen/Fakten statt vager Aussagen
 - Variation in Satzstruktur und Einstiegssaetzen
 
-TEXTUMFANG — halte dich STRIKT an die angegebene Stufe:
-- "Kurz": Folientext max 3-4 Zeilen. Sprechernotizen 2-3 Saetze (~50 Woerter).
-- "Mittel": Folientext max 5-6 Zeilen. Sprechernotizen 4-6 Saetze (~100 Woerter).
-- "Ausfuehrlich": Folientext max 7-8 Zeilen. Sprechernotizen 7-10 Saetze (~180 Woerter).
-Sprechernotizen: natuerlicher Redefluss, Uebergaenge, direkt starten ohne Begruessung.
+TEXTUMFANG:
+- Folientexte: Halte dich an die TEXTLAENGEN-Angaben im Template-Prompt (basierend auf Platzhaltergroesse).
+- Sprechernotizen je nach Stufe:
+  "Kurz": 2-3 Saetze (~50 Woerter)
+  "Mittel": 4-6 Saetze (~100 Woerter)
+  "Ausfuehrlich": 7-10 Saetze (~180 Woerter)
+- Sprechernotizen: natuerlicher Redefluss, Uebergaenge, direkt starten ohne Begruessung.
 
 AUSGABEFORMAT — NUR dieses JSON, kein Text davor/danach:
 

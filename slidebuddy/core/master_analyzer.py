@@ -100,6 +100,61 @@ def generate_template_key(layout_name: str) -> str:
     return key or "unknown"
 
 
+def estimate_text_capacity(placeholder: dict) -> dict:
+    """Estimate text capacity for a placeholder based on box size and name heuristics.
+
+    Since font sizes are typically inherited from the theme and not directly
+    readable via python-pptx, we estimate based on placeholder name patterns
+    and box dimensions.
+
+    Returns dict with: estimated_font_pt, max_lines, max_words, text_hint
+    """
+    w = placeholder["size"]["width"]
+    h = placeholder["size"]["height"]
+    name_lower = placeholder["name"].lower()
+
+    # Estimate font size from placeholder name pattern
+    if placeholder["type"] == "TITLE":
+        font_pt = 28
+    elif "subheading" in name_lower or "heading" in name_lower:
+        font_pt = 18
+    elif "quote" in name_lower or "statement" in name_lower:
+        font_pt = 22
+    elif "person" in name_lower or "count" in name_lower:
+        font_pt = 14
+    elif "bullet" in name_lower:
+        font_pt = 14
+    elif "conclusion" in name_lower or "fazit" in name_lower or "bridge" in name_lower:
+        font_pt = 14
+    else:
+        # Default body text
+        font_pt = 14
+
+    # Calculate capacity
+    # avg char width ≈ font_pt * 0.6 points; 1 inch = 72 points
+    char_width_inches = (font_pt * 0.6) / 72
+    line_height_inches = (font_pt * 1.4) / 72  # 1.4x line spacing
+
+    chars_per_line = max(1, int(w / char_width_inches)) if char_width_inches > 0 else 20
+    max_lines = max(1, int(h / line_height_inches)) if line_height_inches > 0 else 2
+    max_words = max(1, int(chars_per_line * max_lines / 5.5))  # avg 5.5 chars per German word
+
+    # Generate human-readable hint
+    if max_lines <= 1:
+        hint = f"max 1 Zeile, {min(max_words, 8)} Woerter"
+    elif max_lines <= 3:
+        hint = f"max {max_lines} Zeilen, {max_words} Woerter"
+    else:
+        hint = f"max {max_lines} Zeilen, {max_words} Woerter"
+
+    return {
+        "estimated_font_pt": font_pt,
+        "max_lines": max_lines,
+        "max_words": max_words,
+        "text_hint": hint,
+    }
+
+
 def build_content_schema(content_placeholders: list[dict]) -> dict:
     """Build a JSON content schema from the content placeholders.
 
@@ -115,7 +170,8 @@ def build_content_schema(content_placeholders: list[dict]) -> dict:
             # Images are inserted manually by the user — skip
             continue
         else:
-            schema[field_name] = "str — Textinhalt"
+            capacity = estimate_text_capacity(ph)
+            schema[field_name] = f"str — {capacity['text_hint']}"
     return schema
 
 
@@ -127,12 +183,12 @@ def build_generation_prompt(
     """Build a generation prompt that matches the prompt_assembler format.
 
     Produces HINWEISE text that tells the LLM exactly how to fill the content
-    JSON for this layout, referencing the actual placeholder field names.
+    JSON for this layout, referencing the actual placeholder field names
+    and their text capacity constraints.
     """
     # Classify placeholders
     body_phs = [p for p in content_placeholders if p["type"] == "BODY"]
     image_phs = [p for p in content_placeholders if p["type"] == "PICTURE"]
-    title_phs = [p for p in content_placeholders if p["type"] == "TITLE"]
 
     # Detect structural patterns
     subheading_phs = [p for p in body_phs if "subheading" in p["name"].lower() or "heading" in p["name"].lower()]
@@ -145,29 +201,6 @@ def build_generation_prompt(
 
     lines = []
 
-    # Slide purpose — derive a purpose hint from the layout type
-    purpose_map = {
-        "zitat": "ein praegnantes Zitat oder eine These wirkungsvoll praesentieren",
-        "quote": "ein praegnantes Zitat oder eine These wirkungsvoll praesentieren",
-        "vergleich": "zwei oder mehr Aspekte gegenueberstellen und Unterschiede herausarbeiten",
-        "comparison": "zwei oder mehr Aspekte gegenueberstellen und Unterschiede herausarbeiten",
-        "timeline": "eine chronologische Abfolge oder Entwicklung darstellen",
-        "erklaer": "einen Sachverhalt verstaendlich erklaeren und Kernpunkte hervorheben",
-        "agenda": "die Gliederung oder naechsten Schritte uebersichtlich auflisten",
-        "start": "das Thema einleiten und Interesse wecken",
-        "end": "die wichtigsten Erkenntnisse zusammenfassen und einen Ausblick geben",
-        "schluss": "die wichtigsten Erkenntnisse zusammenfassen und einen Ausblick geben",
-        "team": "Personen oder Rollen vorstellen",
-        "statistik": "Zahlen und Daten verstaendlich visualisieren",
-        "chart": "Zahlen und Daten verstaendlich visualisieren",
-    }
-    layout_lower = layout_name.lower()
-    purpose = next(
-        (desc for keyword, desc in purpose_map.items() if keyword in layout_lower),
-        "eine klare Kernaussage vermitteln",
-    )
-    lines.append(f"- ZIEL dieser \"{layout_name}\"-Folie: {purpose}. Formuliere zuerst intern das Ziel, bevor du die Felder befuellst.")
-
     # Count repeating groups (e.g. subheading1+text1, subheading2+text2)
     num_groups = max(len(subheading_phs), len(text_phs), 1)
     has_groups = len(subheading_phs) > 1 or len(text_phs) > 1
@@ -176,9 +209,8 @@ def build_generation_prompt(
     if has_groups:
         lines.append(f"- Dieses Layout hat {num_groups} inhaltliche Abschnitte die parallel befuellt werden muessen")
 
-    # Field-specific hints (text only — images are ignored)
+    # Field-specific hints with text capacity
     if subheading_phs and text_phs:
-        lines.append("- Jeder Abschnitt hat eine Ueberschrift (subheading, 2-5 Woerter) und einen Fliesstext (text, 1-3 Saetze)")
         lines.append("- Alle Abschnitte sollten ungefaehr gleich lang sein")
         lines.append("- Ueberschriften sollten parallel formuliert sein (gleicher Satzbau)")
 
@@ -197,9 +229,19 @@ def build_generation_prompt(
     if bridge_phs:
         lines.append("- Bridge-Feld verbindet die Abschnitte thematisch (kurzer Uebergangssatz)")
 
+    # Per-field text capacity hints
+    lines.append("")
+    lines.append("TEXTLAENGEN pro Feld (Platz auf der Folie):")
+    for ph in content_placeholders:
+        if ph["type"] in ("TITLE", "PICTURE"):
+            continue
+        capacity = estimate_text_capacity(ph)
+        lines.append(f'  "{ph["name"]}": {capacity["text_hint"]} ({ph["size"]["width"]:.1f}x{ph["size"]["height"]:.1f} Zoll, ~{capacity["estimated_font_pt"]}pt)')
+
     # JSON output reminder — only text fields (no images)
     schema_fields = list(content_schema.keys())
     if schema_fields:
+        lines.append("")
         field_list = ", ".join(f'"{f}"' for f in schema_fields[:8])
         if len(schema_fields) > 8:
             field_list += f" ... ({len(schema_fields)} Felder gesamt)"
@@ -209,7 +251,7 @@ def build_generation_prompt(
             lines.append(f"- {len(image_phs)} Bildplatzhalter vorhanden — diese werden vom Nutzer manuell befuellt, NICHT im JSON ausgeben")
 
     # Fallback if nothing was detected
-    if len(lines) <= 1:
+    if not lines:
         lines.append("- Befuelle alle Felder im JSON-Schema mit passendem Inhalt")
         lines.append("- Halte Texte praegnant und passend zum Folienthema")
 
@@ -217,7 +259,11 @@ def build_generation_prompt(
 
 
 def build_llm_analysis_prompt(layouts: list[dict]) -> str:
-    """Build a prompt for LLM to analyze layouts and suggest template metadata."""
+    """Build a prompt for LLM to analyze layouts and suggest template metadata.
+
+    The LLM generates purpose, display_name, description, and generation_prompt
+    based on the layout structure — replacing the old hardcoded purpose_map.
+    """
     layout_descriptions = []
     for layout in layouts:
         if not layout["content_placeholders"]:
@@ -225,7 +271,12 @@ def build_llm_analysis_prompt(layouts: list[dict]) -> str:
 
         phs = []
         for ph in layout["content_placeholders"]:
-            phs.append(f"  - {ph['name']} ({ph['type']}, {ph['size']['width']:.1f}x{ph['size']['height']:.1f} Zoll)")
+            capacity = estimate_text_capacity(ph)
+            phs.append(
+                f"  - {ph['name']} ({ph['type']}, "
+                f"{ph['size']['width']:.1f}x{ph['size']['height']:.1f} Zoll, "
+                f"~{capacity['estimated_font_pt']}pt, {capacity['text_hint']})"
+            )
 
         layout_descriptions.append(
             f"Layout {layout['layout_index']}: \"{layout['layout_name']}\"\n"
@@ -238,7 +289,8 @@ def build_llm_analysis_prompt(layouts: list[dict]) -> str:
 
 1. **display_name**: Ein kurzer, klarer deutscher Name (z.B. "Vergleich Links/Rechts")
 2. **description**: 1-2 Saetze Beschreibung wofuer das Layout ideal ist
-3. **generation_prompt**: Ein Prompt-Absatz (3-5 Saetze) der dem LLM erklaert wie Content fuer dieses Layout generiert werden soll. Beschreibe welche Felder befuellt werden muessen und wie der Inhalt strukturiert sein soll.
+3. **purpose**: Ein Satz der das ZIEL dieser Folie beschreibt (z.B. "zwei Aspekte gegenueberstellen und Unterschiede herausarbeiten"). Leite dies aus Layout-Name und Placeholder-Struktur ab.
+4. **generation_prompt**: Ein Prompt-Absatz (3-5 Saetze) der dem LLM erklaert wie Content fuer dieses Layout generiert werden soll. Beschreibe welche Felder befuellt werden muessen und wie der Inhalt strukturiert sein soll. Beachte die Textlaengen-Limits der Felder.
 
 LAYOUTS:
 
@@ -249,6 +301,7 @@ Antworte als JSON-Array. Jedes Element hat:
     "layout_index": int,
     "display_name": "str",
     "description": "str",
+    "purpose": "str",
     "generation_prompt": "str"
 }}
 
