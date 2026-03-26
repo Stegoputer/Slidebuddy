@@ -150,8 +150,15 @@ def get_provider_models() -> dict[str, list[str]]:
     else:
         result["openai"] = _FALLBACK_MODELS["openai"]
 
-    # Google — static list (no simple list API)
-    result["google"] = _FALLBACK_MODELS["google"]
+    # Google — fetch from API
+    if api_keys.get("google"):
+        try:
+            result["google"] = _fetch_google_models(api_keys["google"])
+        except Exception as e:
+            logger.warning(f"Failed to fetch Google models: {e}")
+            result["google"] = _FALLBACK_MODELS["google"]
+    else:
+        result["google"] = _FALLBACK_MODELS["google"]
 
     _models_cache = result
     return result
@@ -179,4 +186,19 @@ def _fetch_openai_models(api_key: str) -> list[str]:
         if any(m.id.startswith(p) for p in chat_prefixes)
     )
     return chat_models if chat_models else _FALLBACK_MODELS["openai"]
+
+
+def _fetch_google_models(api_key: str) -> list[str]:
+    """Fetch available Gemini models from Google AI API."""
+    import google.generativeai as genai
+    genai.configure(api_key=api_key)
+    models = genai.list_models()
+    # Filter to generative models that support generateContent
+    gemini_models = sorted(
+        m.name.replace("models/", "")
+        for m in models
+        if "generateContent" in (m.supported_generation_methods or [])
+        and "gemini" in m.name
+    )
+    return gemini_models if gemini_models else _FALLBACK_MODELS["google"]
 
