@@ -19,6 +19,10 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Dark Fintech Theme
+from slidebuddy.ui.theme import inject_theme
+inject_theme()
+
 # Session state defaults
 if "current_project_id" not in st.session_state:
     st.session_state.current_project_id = None

@@ -13,11 +13,19 @@ from slidebuddy.llm.router import clear_llm_cache, clear_models_cache, get_provi
 
 
 def render_settings():
-    st.header("Einstellungen")
+    st.header("⚙️ Einstellungen")
 
     prefs = load_preferences()
 
-    tabs = st.tabs(["API-Keys", "Modelle", "Generierung", "RAG", "Prompts", "Praeferenzen"])
+    # Full-width tabs with icons
+    tabs = st.tabs([
+        "🔑 API-Keys",
+        "🤖 Modelle",
+        "⚡ Generierung",
+        "📚 RAG & Retrieval",
+        "✏️ Prompts",
+        "🎨 Praeferenzen",
+    ])
 
     with tabs[0]:
         _render_api_keys(prefs)
@@ -43,29 +51,36 @@ def render_settings():
 # ---------------------------------------------------------------------------
 
 def _render_api_keys(prefs: dict):
+    st.subheader("🔑 API-Keys")
+    st.caption("Trage hier deine API-Keys fuer die verschiedenen LLM-Anbieter ein.")
+
     api_keys = prefs.get("api_keys", {})
 
     with st.form("api_keys_form"):
-        anthropic_key = st.text_input(
-            "Anthropic API Key",
-            value=api_keys.get("anthropic", ""),
-            type="password",
-            help="Fuer Claude-Modelle",
-        )
-        openai_key = st.text_input(
-            "OpenAI API Key",
-            value=api_keys.get("openai", ""),
-            type="password",
-            help="Fuer GPT-Modelle und Embeddings",
-        )
-        google_key = st.text_input(
-            "Google AI API Key",
-            value=api_keys.get("google", ""),
-            type="password",
-            help="Fuer Gemini-Modelle",
-        )
+        col1, col2 = st.columns(2)
+        with col1:
+            anthropic_key = st.text_input(
+                "Anthropic API Key",
+                value=api_keys.get("anthropic", ""),
+                type="password",
+                help="Fuer Claude-Modelle (claude-3.5-sonnet, claude-3-opus, etc.)",
+            )
+            openai_key = st.text_input(
+                "OpenAI API Key",
+                value=api_keys.get("openai", ""),
+                type="password",
+                help="Fuer GPT-Modelle und Embeddings (text-embedding-3-small, etc.)",
+            )
+        with col2:
+            google_key = st.text_input(
+                "Google AI API Key",
+                value=api_keys.get("google", ""),
+                type="password",
+                help="Fuer Gemini-Modelle (gemini-pro, gemini-1.5-flash, etc.)",
+            )
 
-        if st.form_submit_button("API-Keys speichern"):
+        st.markdown("")  # spacing
+        if st.form_submit_button("💾 API-Keys speichern", use_container_width=True):
             prefs["api_keys"] = {
                 "anthropic": anthropic_key,
                 "openai": openai_key,
@@ -73,7 +88,7 @@ def _render_api_keys(prefs: dict):
             }
             save_preferences(prefs)
             clear_llm_cache()
-            clear_models_cache()  # Re-fetch models with new keys
+            clear_models_cache()
             st.success("API-Keys gespeichert!")
 
 
@@ -82,31 +97,52 @@ def _render_api_keys(prefs: dict):
 # ---------------------------------------------------------------------------
 
 def _render_models(prefs: dict):
+    st.subheader("🤖 Modellauswahl")
+    st.caption("Waehle fuer jede Phase das passende LLM. Schnellere Modelle fuer Planung, staerkere fuer Generierung.")
+
     provider_models = get_provider_models()
     all_models = []
     for models in provider_models.values():
         all_models.extend(models)
 
+    if not all_models:
+        st.warning("Keine Modelle verfuegbar. Bitte zuerst API-Keys eintragen.")
+        return
+
     default_models = prefs.get("default_models", {})
 
     with st.form("models_form"):
-        planning_model = st.selectbox(
-            "Planung (Kapitel + Sektionen)",
-            all_models,
-            index=all_models.index(default_models.get("planning", all_models[0])) if default_models.get("planning") in all_models else 0,
-        )
-        generation_model = st.selectbox(
-            "Generierung (Slides)",
-            all_models,
-            index=all_models.index(default_models.get("generation", all_models[0])) if default_models.get("generation") in all_models else 0,
-        )
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("**📋 Planung**")
+            planning_model = st.selectbox(
+                "Kapitel- & Sektionsplanung",
+                all_models,
+                index=all_models.index(default_models.get("planning", all_models[0])) if default_models.get("planning") in all_models else 0,
+                help="Wird fuer die Strukturplanung verwendet. Schnellere Modelle reichen hier meist.",
+            )
+
+        with col2:
+            st.markdown("**🎯 Generierung**")
+            generation_model = st.selectbox(
+                "Slide-Generierung",
+                all_models,
+                index=all_models.index(default_models.get("generation", all_models[0])) if default_models.get("generation") in all_models else 0,
+                help="Wird fuer die Inhaltserstellung verwendet. Staerkere Modelle liefern bessere Ergebnisse.",
+            )
+
+        st.divider()
+        st.markdown("**🔢 Embeddings**")
         embedding_model = st.selectbox(
-            "Embeddings",
+            "Embedding-Modell",
             ["text-embedding-3-small", "text-embedding-3-large"],
             index=0,
+            help="Fuer die Vektorsuche (RAG). 'small' ist schneller und guenstiger.",
         )
 
-        if st.form_submit_button("Modelle speichern"):
+        st.markdown("")
+        if st.form_submit_button("💾 Modelle speichern", use_container_width=True):
             prefs["default_models"] = {
                 "planning": planning_model,
                 "generation": generation_model,
@@ -122,28 +158,37 @@ def _render_models(prefs: dict):
 # ---------------------------------------------------------------------------
 
 def _render_generation_strategy(prefs: dict):
-    st.subheader("Batch-Generierung")
+    st.subheader("⚡ Batch-Generierung")
+    st.caption("Steuert wie viele Folien pro LLM-Aufruf generiert werden.")
 
-    batch_size = st.slider(
-        "Batch-Groesse (Folien pro LLM-Call)",
-        min_value=1,
-        max_value=8,
-        value=prefs.get("batch_size", 4),
-        key="settings_batch_size",
-    )
-    st.caption("Mehrere Folien werden in einem LLM-Call zusammen generiert. Guter Kompromiss aus Geschwindigkeit und Kohaerenz.")
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        batch_size = st.slider(
+            "Folien pro Batch",
+            min_value=1,
+            max_value=8,
+            value=prefs.get("batch_size", 4),
+            key="settings_batch_size",
+            help="Mehr Folien pro Batch = schneller, aber weniger Kontrolle. Empfohlen: 3-5.",
+        )
+    with col2:
+        st.metric("Aktuell", f"{batch_size} Folien")
 
-    if st.button("Speichern", key="save_strategy"):
+    if st.button("💾 Speichern", key="save_strategy", use_container_width=True):
         prefs["batch_size"] = batch_size
         save_preferences(prefs)
         st.success("Batch-Groesse gespeichert!")
 
     st.divider()
-    st.subheader("Prompt-Debug-Modus")
+
+    # Debug section
+    st.subheader("🐛 Prompt-Debug-Modus")
+    st.caption("Loggt jeden LLM-Aufruf mit vollstaendigem Prompt, Chunks und Antwort.")
+
     debug_on = st.toggle(
         "Debug-Logging aktivieren",
         value=prefs.get("debug_prompts", False),
-        help="Loggt jeden LLM-Call (Prompts, Chunks, Antworten, Tokens) in data/prompt_debug.jsonl",
+        help="Schreibt in data/prompt_debug.jsonl",
     )
     if debug_on != prefs.get("debug_prompts", False):
         prefs["debug_prompts"] = debug_on
@@ -154,25 +199,40 @@ def _render_generation_strategy(prefs: dict):
         from slidebuddy.llm.prompt_logger import get_log_summary, clear_log, LOG_PATH
         summary = get_log_summary()
         if summary["total_calls"] > 0:
-            st.caption(f"Log: {summary['total_calls']} Calls | ~{summary['total_input_tokens']:,} Input-Tokens | ~{summary['total_output_tokens']:,} Output-Tokens | {summary['total_duration_s']}s")
-            for phase, stats in summary.get("by_phase", {}).items():
-                st.caption(f"  {phase}: {stats['calls']}x | ~{stats['input_tokens']:,} in | ~{stats['output_tokens']:,} out | {round(stats['duration_s'],1)}s")
+            # Stats in metrics
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Calls", summary["total_calls"])
+            m2.metric("Input-Tokens", f"~{summary['total_input_tokens']:,}")
+            m3.metric("Output-Tokens", f"~{summary['total_output_tokens']:,}")
+            m4.metric("Dauer", f"{summary['total_duration_s']}s")
+
+            # Per-phase breakdown
+            with st.expander("Details pro Phase"):
+                for phase, stats in summary.get("by_phase", {}).items():
+                    st.caption(
+                        f"**{phase}**: {stats['calls']}x | "
+                        f"~{stats['input_tokens']:,} in | "
+                        f"~{stats['output_tokens']:,} out | "
+                        f"{round(stats['duration_s'], 1)}s"
+                    )
+
             col1, col2 = st.columns(2)
             with col1:
-                if st.button("Log loeschen", key="clear_debug_log"):
+                if st.button("🗑️ Log loeschen", key="clear_debug_log", use_container_width=True):
                     clear_log()
                     st.rerun()
             with col2:
                 if LOG_PATH.exists():
                     st.download_button(
-                        "Log herunterladen",
+                        "📥 Log herunterladen",
                         LOG_PATH.read_bytes(),
                         file_name="prompt_debug.jsonl",
                         mime="application/jsonl",
                         key="download_debug_log",
+                        use_container_width=True,
                     )
         else:
-            st.caption("Noch keine Calls geloggt. Starte eine Generierung.")
+            st.info("Noch keine Calls geloggt. Starte eine Generierung.")
 
 
 # ---------------------------------------------------------------------------
@@ -183,75 +243,91 @@ def _render_rag_settings(prefs: dict):
     rag = prefs.get("rag", {})
 
     with st.form("rag_form"):
-        st.subheader("Retrieval (Quellensuche)")
+        # --- Retrieval ---
+        st.subheader("🔍 Retrieval (Quellensuche)")
+        st.caption("Wie viele Chunks bei der Suche zurueckgegeben werden.")
 
         col1, col2 = st.columns(2)
         with col1:
-            st.markdown("**Planung (Kapitel + Sektionen)**")
+            st.markdown("**📋 Planung**")
             n_sources_planning = st.number_input(
-                "Quell-Chunks pro Suche",
+                "Quell-Chunks",
                 min_value=1, max_value=20,
                 value=rag.get("n_sources_planning", 5),
-                help="Anzahl der Quell-Chunks bei der Sektionsplanung",
+                help="Chunks aus Projektquellen fuer die Sektionsplanung",
+                key="rag_src_plan",
             )
             n_global_planning = st.number_input(
-                "Globale Slides pro Suche",
+                "Globale Slides",
                 min_value=0, max_value=10,
                 value=rag.get("n_global_planning", 3),
-                help="Anzahl wiederverwendbarer Slides aus frueheren Projekten",
+                help="Wiederverwendbare Slides aus frueheren Projekten",
+                key="rag_glob_plan",
             )
         with col2:
-            st.markdown("**Generierung (Slide-Erstellung)**")
+            st.markdown("**🎯 Generierung**")
             n_sources_generation = st.number_input(
-                "Quell-Chunks pro Suche ",
+                "Quell-Chunks",
                 min_value=1, max_value=20,
                 value=rag.get("n_sources_generation", 3),
-                help="Anzahl der Quell-Chunks bei der Slide-Generierung",
+                help="Chunks aus Projektquellen fuer die Slide-Erstellung",
+                key="rag_src_gen",
             )
             n_global_generation = st.number_input(
-                "Globale Slides pro Suche ",
+                "Globale Slides",
                 min_value=0, max_value=10,
                 value=rag.get("n_global_generation", 2),
-                help="Anzahl wiederverwendbarer Slides bei der Generierung",
+                help="Wiederverwendbare Slides bei der Generierung",
+                key="rag_glob_gen",
             )
 
         st.divider()
-        st.subheader("Auto-Chunk-Zuordnung")
+
+        # --- Auto-Chunk Assignment ---
+        st.subheader("📌 Auto-Chunk-Zuordnung")
+        st.caption("Nach der Sektionsplanung werden automatisch passende Chunks pro Folie zugeordnet.")
         n_chunks_per_slide = st.number_input(
-            "Chunks pro Folie (nach Sektionsplanung)",
+            "Chunks pro Folie",
             min_value=1, max_value=10,
             value=rag.get("n_chunks_per_slide", 3),
-            help="Wie viele Chunks automatisch pro Folie zugeordnet werden",
+            help="Mehr Chunks = mehr Kontext, aber auch mehr Tokens",
         )
 
         st.divider()
-        st.subheader("Kontext-Limit")
-        max_context_chars = st.number_input(
-            "Max. Zeichen fuer RAG-Kontext im Prompt",
+
+        # --- Context Limit ---
+        st.subheader("📏 Kontext-Limit")
+        st.caption("Maximale Zeichenzahl fuer den RAG-Kontext im LLM-Prompt.")
+        max_context_chars = st.slider(
+            "Max. Zeichen",
             min_value=1000, max_value=30000, step=500,
             value=rag.get("max_context_chars", 6000),
-            help="Zeichenbudget fuer Quellkontext im LLM-Prompt. Groessere Werte = mehr Kontext, aber mehr Tokens.",
+            help="Groessere Werte = mehr Kontext, aber mehr Tokens und Kosten.",
         )
 
         st.divider()
-        st.subheader("Chunking (Textaufteilung)")
+
+        # --- Chunking ---
+        st.subheader("✂️ Chunking (Textaufteilung)")
+        st.caption("Einstellungen fuer die Aufteilung hochgeladener Quellen in Chunks. Aenderungen wirken nur bei neuem Upload.")
         col3, col4 = st.columns(2)
         with col3:
             chunk_size = st.number_input(
                 "Chunk-Groesse (Tokens)",
                 min_value=100, max_value=2000, step=50,
                 value=rag.get("chunk_size", 500),
-                help="Ziel-Groesse pro Chunk in Tokens (~4 Zeichen/Token). Aenderung wirkt nur bei neuem Upload.",
+                help="~4 Zeichen pro Token. Groessere Chunks = mehr Kontext pro Chunk.",
             )
         with col4:
             chunk_overlap = st.number_input(
-                "Chunk-Ueberlappung (Tokens)",
+                "Ueberlappung (Tokens)",
                 min_value=0, max_value=500, step=10,
                 value=rag.get("chunk_overlap", 50),
-                help="Ueberlappung zwischen Chunks. Aenderung wirkt nur bei neuem Upload.",
+                help="Ueberlappung verhindert, dass Informationen an Chunk-Grenzen verloren gehen.",
             )
 
-        if st.form_submit_button("RAG-Einstellungen speichern"):
+        st.markdown("")
+        if st.form_submit_button("💾 RAG-Einstellungen speichern", use_container_width=True):
             prefs["rag"] = {
                 "n_sources_planning": n_sources_planning,
                 "n_global_planning": n_global_planning,
@@ -265,10 +341,14 @@ def _render_rag_settings(prefs: dict):
             save_preferences(prefs)
             st.success("RAG-Einstellungen gespeichert!")
 
+    # Migration button outside form
     st.divider()
-    st.subheader("Distanzmetrik migrieren")
-    st.caption("Bestehende Collections von L2 auf Cosine-Distanz umstellen. Danach sind Relevanzwerte aussagekraeftig (0-100%).")
-    if st.button("Collections auf Cosine migrieren", key="migrate_cosine"):
+    st.subheader("🔄 Distanzmetrik migrieren")
+    st.caption(
+        "Stellt bestehende ChromaDB-Collections von L2 auf Cosine-Distanz um. "
+        "Danach zeigen Relevanzwerte sinnvolle Prozentwerte (0-100%)."
+    )
+    if st.button("Collections auf Cosine migrieren", key="migrate_cosine", use_container_width=True):
         from slidebuddy.rag.chroma_manager import migrate_to_cosine
         with st.spinner("Migriere Collections..."):
             count = migrate_to_cosine()
@@ -282,7 +362,6 @@ def _render_rag_settings(prefs: dict):
 # Prompt Editor
 # ---------------------------------------------------------------------------
 
-# Phases that are editable in the UI (grouped for display)
 _EDITABLE_PHASES = {
     "Basis": ["role", "quality_criteria"],
     "Planung": ["chapter_planning", "section_planning"],
@@ -299,29 +378,33 @@ _PHASE_LABELS = {
 
 
 def _render_prompt_editor(prefs: dict):
-    st.subheader("Prompt-Editor")
-    st.caption("Bearbeite die Prompts fuer jede Phase. Custom-Prompts koennen gespeichert und geloescht werden. Default-Prompts sind nicht loeschbar.")
+    st.subheader("✏️ Prompt-Editor")
+    st.caption(
+        "Bearbeite die System-Prompts fuer jede Phase. "
+        "Du kannst eigene Varianten erstellen und zwischen ihnen wechseln."
+    )
 
     custom_prompts = prefs.get("custom_prompts", {})
     active_prompts = prefs.get("active_prompts", {})
 
-    # Phase selection
-    group = st.selectbox(
-        "Kategorie",
-        list(_EDITABLE_PHASES.keys()),
-        key="prompt_group",
-    )
+    # Phase selection in two columns
+    col1, col2 = st.columns(2)
+    with col1:
+        group = st.selectbox(
+            "Kategorie",
+            list(_EDITABLE_PHASES.keys()),
+            key="prompt_group",
+        )
+    with col2:
+        phases = _EDITABLE_PHASES[group]
+        phase_key = st.selectbox(
+            "Prompt",
+            phases,
+            format_func=lambda k: _PHASE_LABELS.get(k, k),
+            key="prompt_phase",
+        )
 
-    phases = _EDITABLE_PHASES[group]
-    phase_key = st.selectbox(
-        "Prompt",
-        phases,
-        format_func=lambda k: _PHASE_LABELS.get(k, k),
-        key="prompt_phase",
-    )
-
-    # Active prompt source selector
-    # Options: "default" + all custom prompts for this phase
+    # Active prompt source
     matching_custom = {
         name: p for name, p in custom_prompts.items()
         if p.get("phase") == phase_key
@@ -332,13 +415,11 @@ def _render_prompt_editor(prefs: dict):
     if active_source not in source_options:
         active_source = "default"
 
-    source_idx = source_options.index(active_source)
-
     selected_source = st.selectbox(
         "Aktiver Prompt",
         source_options,
-        index=source_idx,
-        format_func=lambda s: "Default (nicht loeschbar)" if s == "default" else s,
+        index=source_options.index(active_source),
+        format_func=lambda s: "🔒 Default (nicht loeschbar)" if s == "default" else f"📝 {s}",
         key=f"prompt_source_{phase_key}",
     )
 
@@ -363,21 +444,21 @@ def _render_prompt_editor(prefs: dict):
     edited_text = st.text_area(
         "Prompt-Text",
         value=current_text,
-        height=300,
+        height=350,
         key=f"prompt_text_{phase_key}_{selected_source}",
     )
 
     # Action buttons
+    st.markdown("")  # spacing
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        # Save as new custom prompt
         new_name = st.text_input(
-            "Neuer Prompt-Name",
+            "Name fuer neuen Prompt",
             placeholder="z.B. 'Mein Style'",
             key=f"new_prompt_name_{phase_key}",
         )
-        if st.button("Als neuen Prompt speichern", key=f"save_new_{phase_key}"):
+        if st.button("➕ Als neuen Prompt speichern", key=f"save_new_{phase_key}", use_container_width=True):
             if not new_name or not new_name.strip():
                 st.error("Bitte einen Namen eingeben.")
             elif new_name.strip() == "default":
@@ -396,18 +477,20 @@ def _render_prompt_editor(prefs: dict):
                 st.rerun()
 
     with col2:
-        # Overwrite current custom prompt
         if not is_default:
-            if st.button("Aenderungen speichern", key=f"overwrite_{phase_key}"):
+            st.markdown("")  # align with text_input above
+            st.markdown("")
+            if st.button("💾 Aenderungen speichern", key=f"overwrite_{phase_key}", use_container_width=True):
                 custom_prompts[selected_source]["text"] = edited_text
                 prefs["custom_prompts"] = custom_prompts
                 save_preferences(prefs)
                 st.success(f"Prompt '{selected_source}' aktualisiert!")
 
     with col3:
-        # Delete custom prompt (not default)
         if not is_default:
-            if st.button("Prompt loeschen", key=f"delete_{phase_key}", type="secondary"):
+            st.markdown("")
+            st.markdown("")
+            if st.button("🗑️ Prompt loeschen", key=f"delete_{phase_key}", use_container_width=True, type="secondary"):
                 del custom_prompts[selected_source]
                 if active_prompts.get(phase_key) == selected_source:
                     active_prompts.pop(phase_key, None)
@@ -417,9 +500,9 @@ def _render_prompt_editor(prefs: dict):
                 st.success(f"Prompt '{selected_source}' geloescht!")
                 st.rerun()
 
-    # Show default for comparison when viewing custom
+    # Show default for comparison
     if not is_default:
-        with st.expander("Default-Prompt anzeigen (zum Vergleich)"):
+        with st.expander("🔍 Default-Prompt anzeigen (zum Vergleich)"):
             st.code(get_default_prompt_text(phase_key), language=None)
 
 
@@ -428,25 +511,43 @@ def _render_prompt_editor(prefs: dict):
 # ---------------------------------------------------------------------------
 
 def _render_preferences(prefs: dict):
+    st.subheader("🎨 Praeferenzen")
+    st.caption("Globale Standardwerte fuer neue Projekte.")
+
     with st.form("prefs_form"):
-        language = st.selectbox(
-            "Standard-Sprache",
-            LANGUAGES,
-            index=LANGUAGES.index(prefs.get("default_language", "de")),
-            format_func=lambda x: "Deutsch" if x == "de" else "English",
-        )
-        text_length = st.selectbox(
-            "Standard-Textumfang",
-            TEXT_LENGTHS,
-            index=TEXT_LENGTHS.index(prefs.get("default_text_length", "medium")),
-        )
-        tonality = st.text_input("Tonalitaet", value=prefs.get("tonality", ""))
+        col1, col2 = st.columns(2)
+
+        with col1:
+            language = st.selectbox(
+                "Standard-Sprache",
+                LANGUAGES,
+                index=LANGUAGES.index(prefs.get("default_language", "de")),
+                format_func=lambda x: "🇩🇪 Deutsch" if x == "de" else "🇬🇧 English",
+            )
+            text_length = st.selectbox(
+                "Standard-Textumfang",
+                TEXT_LENGTHS,
+                index=TEXT_LENGTHS.index(prefs.get("default_text_length", "medium")),
+                format_func=lambda x: {"short": "Kurz", "medium": "Mittel", "long": "Ausfuehrlich"}.get(x, x),
+            )
+
+        with col2:
+            tonality = st.text_input(
+                "Tonalitaet",
+                value=prefs.get("tonality", ""),
+                placeholder="z.B. 'professionell', 'locker', 'wissenschaftlich'",
+            )
+
+        st.divider()
+
         custom_rules = st.text_area(
             "Eigene Regeln (eine pro Zeile)",
             value="\n".join(prefs.get("custom_rules", [])),
+            height=100,
+            placeholder="z.B. 'Keine Anglizismen verwenden'\n'Immer Quellenangaben nennen'",
         )
 
-        # Preferred templates — dynamic from active master
+        # Preferred templates
         available = get_available_template_types()
         labels = get_template_labels()
         current_preferred = [t for t in prefs.get("preferred_templates", []) if t in available]
@@ -457,7 +558,8 @@ def _render_preferences(prefs: dict):
             format_func=lambda t: labels.get(t, t),
         )
 
-        if st.form_submit_button("Praeferenzen speichern"):
+        st.markdown("")
+        if st.form_submit_button("💾 Praeferenzen speichern", use_container_width=True):
             prefs["default_language"] = language
             prefs["default_text_length"] = text_length
             prefs["tonality"] = tonality

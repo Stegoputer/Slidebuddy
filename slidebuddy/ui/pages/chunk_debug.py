@@ -25,11 +25,11 @@ def render_chunk_debug():
         key="chunk_debug_project",
     )
 
-    # Reset source/slider when project changes
+    # Reset source/index when project changes
     if st.session_state.get("_chunk_debug_last_project") != selected_project_id:
         st.session_state["_chunk_debug_last_project"] = selected_project_id
         st.session_state.pop("chunk_debug_source", None)
-        st.session_state.pop("chunk_slider", None)
+        st.session_state.pop("chunk_idx", None)
 
     # Dropdown: Quelle
     sources = get_sources_for_project(conn, selected_project_id)
@@ -46,7 +46,7 @@ def render_chunk_debug():
 
     # Reset slider when source changes
     def _on_source_change():
-        st.session_state.pop("chunk_slider", None)
+        st.session_state.pop("chunk_idx", None)
 
     selected_source_id = st.selectbox(
         "Quelle",
@@ -92,47 +92,39 @@ def render_chunk_debug():
 
     max_idx = len(paired) - 1
 
-    # Navigation: prev/slider/next in one row
-    if max_idx == 0:
-        if "chunk_slider" in st.session_state:
-            del st.session_state.chunk_slider
-        chunk_idx = 0
-    else:
-        if "chunk_slider" in st.session_state:
-            st.session_state.chunk_slider = min(st.session_state.chunk_slider, max_idx)
-        col_prev, col_slider, col_next = st.columns([1, 6, 1])
+    # Clamp index to valid range
+    if "chunk_idx" not in st.session_state:
+        st.session_state.chunk_idx = 0
+    st.session_state.chunk_idx = min(st.session_state.chunk_idx, max_idx)
+    chunk_idx = st.session_state.chunk_idx
+
+    # Navigation: prev / label / next
+    if max_idx > 0:
+        col_prev, col_label, col_next = st.columns([1, 4, 1])
         with col_prev:
             st.button(
-                "<",
+                "◀",
                 use_container_width=True,
                 key="chunk_prev",
-                on_click=lambda: st.session_state.update(
-                    chunk_slider=max(0, st.session_state.get("chunk_slider", 0) - 1)
-                ),
+                disabled=chunk_idx == 0,
+                on_click=lambda: st.session_state.update(chunk_idx=chunk_idx - 1),
             )
-        with col_slider:
-            chunk_idx = st.slider(
-                "Chunk",
-                min_value=0,
-                max_value=max_idx,
-                value=0,
-                key="chunk_slider",
-                label_visibility="collapsed",
+        with col_label:
+            st.markdown(
+                f"<div style='text-align:center; padding:0.4rem 0; font-size:1.1rem;'>"
+                f"Chunk <b>{chunk_idx + 1}</b> / {len(paired)}</div>",
+                unsafe_allow_html=True,
             )
         with col_next:
             st.button(
-                ">",
+                "▶",
                 use_container_width=True,
                 key="chunk_next",
-                on_click=lambda: st.session_state.update(
-                    chunk_slider=min(max_idx, st.session_state.get("chunk_slider", 0) + 1)
-                ),
+                disabled=chunk_idx == max_idx,
+                on_click=lambda: st.session_state.update(chunk_idx=chunk_idx + 1),
             )
 
     doc, meta, chunk_id = paired[chunk_idx]
-
-    # Display current chunk
-    st.markdown(f"**Chunk {chunk_idx + 1} / {len(paired)}**")
 
     col1, col2 = st.columns([1, 1])
     with col1:
