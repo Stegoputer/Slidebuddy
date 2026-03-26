@@ -33,7 +33,8 @@ _FALLBACK_MODELS = {
     ],
     "google": [
         "gemini-2.0-flash",
-        "gemini-2.5-pro-preview-06-05",
+        "gemini-2.5-flash",
+        "gemini-2.5-pro",
     ],
 }
 
