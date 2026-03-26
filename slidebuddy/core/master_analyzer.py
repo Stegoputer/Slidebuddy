@@ -52,7 +52,7 @@ def analyze_master(file_path: str) -> list[dict]:
                 "idx": ph.placeholder_format.idx,
                 "name": ph.name,
                 "type": readable_type,
-                "is_content": readable_type in ("TITLE", "BODY", "PICTURE"),
+                "is_content": readable_type in ("TITLE", "BODY", "PICTURE", "OBJECT"),
                 "position": {
                     "left": round(ph.left / 914400, 2),
                     "top": round(ph.top / 914400, 2),
