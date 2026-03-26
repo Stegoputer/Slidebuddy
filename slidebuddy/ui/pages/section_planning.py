@@ -395,7 +395,7 @@ def _render_slide_chunks(chapter_idx: int, slide_idx: int, slide: dict, project_
                 meta = chunk.get("metadata", {})
                 filename = meta.get("filename", "?")
                 distance = chunk.get("distance")
-                dist_label = f" | Relevanz: {1 / (1 + distance):.0%}" if distance is not None else ""
+                dist_label = f" | Relevanz: {1 - distance:.0%}" if distance is not None else ""
                 chars = len(chunk.get("text", ""))
 
                 with st.container(border=True):

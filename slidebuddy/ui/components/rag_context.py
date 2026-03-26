@@ -15,7 +15,7 @@ def render_rag_chunks(source_chunks: list[dict], label: str = "Verwendete Quelle
             meta = chunk.get("metadata", {})
             filename = meta.get("filename", "?")
             distance = chunk.get("distance")
-            dist_label = f" — Relevanz: {1 / (1 + distance):.0%}" if distance is not None else ""
+            dist_label = f" — Relevanz: {1 - distance:.0%}" if distance is not None else ""
 
             with st.container(border=True):
                 st.caption(f"**{filename}** (Chunk {meta.get('chunk_index', '?')}){dist_label}")
@@ -140,7 +140,7 @@ def _render_chunk_results(chunks: list[dict], key_prefix: str, on_add=None):
         meta = chunk.get("metadata", {})
         filename = meta.get("filename", "?")
         distance = chunk.get("distance")
-        dist_label = f" — Relevanz: {1 / (1 + distance):.0%}" if distance is not None else ""
+        dist_label = f" — Relevanz: {1 - distance:.0%}" if distance is not None else ""
 
         with st.container(border=True):
             col_info, col_btn = st.columns([5, 1])

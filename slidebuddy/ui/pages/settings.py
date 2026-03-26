@@ -265,6 +265,18 @@ def _render_rag_settings(prefs: dict):
             save_preferences(prefs)
             st.success("RAG-Einstellungen gespeichert!")
 
+    st.divider()
+    st.subheader("Distanzmetrik migrieren")
+    st.caption("Bestehende Collections von L2 auf Cosine-Distanz umstellen. Danach sind Relevanzwerte aussagekraeftig (0-100%).")
+    if st.button("Collections auf Cosine migrieren", key="migrate_cosine"):
+        from slidebuddy.rag.chroma_manager import migrate_to_cosine
+        with st.spinner("Migriere Collections..."):
+            count = migrate_to_cosine()
+        if count > 0:
+            st.success(f"{count} Collection(s) auf Cosine migriert.")
+        else:
+            st.info("Alle Collections nutzen bereits Cosine.")
+
 
 # ---------------------------------------------------------------------------
 # Prompt Editor
