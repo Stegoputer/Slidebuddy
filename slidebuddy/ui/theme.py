@@ -121,20 +121,31 @@ div[data-testid="stVerticalBlock"] > div[style*="border"] {
 .stTabs [data-baseweb="tab-list"] {
     gap: 4px !important;
     background: var(--bg-card) !important;
-    border-radius: 10px !important;
-    padding: 4px !important;
+    border-radius: 12px !important;
+    padding: 6px !important;
+    width: 100% !important;
 }
 
 .stTabs [data-baseweb="tab"] {
-    border-radius: 8px !important;
+    border-radius: 10px !important;
     color: var(--text-secondary) !important;
-    font-weight: 500 !important;
+    font-weight: 600 !important;
+    font-size: 1rem !important;
+    padding: 12px 20px !important;
+    flex: 1 !important;
+    justify-content: center !important;
     transition: all 0.2s ease !important;
 }
 
 .stTabs [aria-selected="true"] {
     background: linear-gradient(135deg, var(--accent), var(--accent-light)) !important;
     color: white !important;
+    box-shadow: 0 2px 12px var(--accent-glow) !important;
+}
+
+.stTabs [data-baseweb="tab"]:hover:not([aria-selected="true"]) {
+    background: var(--bg-card-hover) !important;
+    color: var(--text-primary) !important;
 }
 
 .stTabs [data-baseweb="tab-highlight"] {

@@ -17,14 +17,13 @@ def render_settings():
 
     prefs = load_preferences()
 
-    # Full-width tabs with icons
     tabs = st.tabs([
-        "🔑 API-Keys",
-        "🤖 Modelle",
-        "⚡ Generierung",
-        "📚 RAG & Retrieval",
-        "✏️ Prompts",
-        "🎨 Praeferenzen",
+        "API-Keys",
+        "Modelle",
+        "Generierung",
+        "RAG & Retrieval",
+        "Prompts",
+        "Praeferenzen",
     ])
 
     with tabs[0]:
@@ -51,36 +50,45 @@ def render_settings():
 # ---------------------------------------------------------------------------
 
 def _render_api_keys(prefs: dict):
-    st.subheader("🔑 API-Keys")
+    st.subheader("API-Keys")
     st.caption("Trage hier deine API-Keys fuer die verschiedenen LLM-Anbieter ein.")
 
     api_keys = prefs.get("api_keys", {})
 
-    with st.form("api_keys_form"):
-        col1, col2 = st.columns(2)
-        with col1:
-            anthropic_key = st.text_input(
-                "Anthropic API Key",
-                value=api_keys.get("anthropic", ""),
-                type="password",
-                help="Fuer Claude-Modelle (claude-3.5-sonnet, claude-3-opus, etc.)",
-            )
-            openai_key = st.text_input(
-                "OpenAI API Key",
-                value=api_keys.get("openai", ""),
-                type="password",
-                help="Fuer GPT-Modelle und Embeddings (text-embedding-3-small, etc.)",
-            )
-        with col2:
-            google_key = st.text_input(
-                "Google AI API Key",
-                value=api_keys.get("google", ""),
-                type="password",
-                help="Fuer Gemini-Modelle (gemini-pro, gemini-1.5-flash, etc.)",
-            )
+    # Status overview
+    providers = [
+        ("Anthropic", "anthropic", "Claude-Modelle"),
+        ("OpenAI", "openai", "GPT + Embeddings"),
+        ("Google AI", "google", "Gemini-Modelle"),
+    ]
+    cols = st.columns(len(providers))
+    for col, (name, key, desc) in zip(cols, providers):
+        with col:
+            has_key = bool(api_keys.get(key, ""))
+            st.metric(name, "Aktiv" if has_key else "Fehlt")
+            st.caption(desc)
 
-        st.markdown("")  # spacing
-        if st.form_submit_button("💾 API-Keys speichern", use_container_width=True):
+    st.markdown("")
+
+    with st.form("api_keys_form"):
+        anthropic_key = st.text_input(
+            "Anthropic API Key",
+            value=api_keys.get("anthropic", ""),
+            type="password",
+        )
+        openai_key = st.text_input(
+            "OpenAI API Key",
+            value=api_keys.get("openai", ""),
+            type="password",
+        )
+        google_key = st.text_input(
+            "Google AI API Key",
+            value=api_keys.get("google", ""),
+            type="password",
+        )
+
+        st.markdown("")
+        if st.form_submit_button("Speichern", use_container_width=True):
             prefs["api_keys"] = {
                 "anthropic": anthropic_key,
                 "openai": openai_key,
@@ -97,8 +105,8 @@ def _render_api_keys(prefs: dict):
 # ---------------------------------------------------------------------------
 
 def _render_models(prefs: dict):
-    st.subheader("🤖 Modellauswahl")
-    st.caption("Waehle fuer jede Phase das passende LLM. Schnellere Modelle fuer Planung, staerkere fuer Generierung.")
+    st.subheader("Modellauswahl")
+    st.caption("Waehle fuer jede Phase das passende LLM.")
 
     provider_models = get_provider_models()
     all_models = []
@@ -111,38 +119,41 @@ def _render_models(prefs: dict):
 
     default_models = prefs.get("default_models", {})
 
+    # Current model overview
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Planung", default_models.get("planning", all_models[0]).split("/")[-1] if default_models.get("planning") else "—")
+    with col2:
+        st.metric("Generierung", default_models.get("generation", all_models[0]).split("/")[-1] if default_models.get("generation") else "—")
+    with col3:
+        st.metric("Embeddings", default_models.get("embedding", "text-embedding-3-small"))
+
+    st.markdown("")
+
     with st.form("models_form"):
-        col1, col2 = st.columns(2)
+        planning_model = st.selectbox(
+            "Kapitel- & Sektionsplanung",
+            all_models,
+            index=all_models.index(default_models.get("planning", all_models[0])) if default_models.get("planning") in all_models else 0,
+            help="Schnellere Modelle reichen fuer Planung.",
+        )
 
-        with col1:
-            st.markdown("**📋 Planung**")
-            planning_model = st.selectbox(
-                "Kapitel- & Sektionsplanung",
-                all_models,
-                index=all_models.index(default_models.get("planning", all_models[0])) if default_models.get("planning") in all_models else 0,
-                help="Wird fuer die Strukturplanung verwendet. Schnellere Modelle reichen hier meist.",
-            )
+        generation_model = st.selectbox(
+            "Slide-Generierung",
+            all_models,
+            index=all_models.index(default_models.get("generation", all_models[0])) if default_models.get("generation") in all_models else 0,
+            help="Staerkere Modelle liefern bessere Inhalte.",
+        )
 
-        with col2:
-            st.markdown("**🎯 Generierung**")
-            generation_model = st.selectbox(
-                "Slide-Generierung",
-                all_models,
-                index=all_models.index(default_models.get("generation", all_models[0])) if default_models.get("generation") in all_models else 0,
-                help="Wird fuer die Inhaltserstellung verwendet. Staerkere Modelle liefern bessere Ergebnisse.",
-            )
-
-        st.divider()
-        st.markdown("**🔢 Embeddings**")
         embedding_model = st.selectbox(
             "Embedding-Modell",
             ["text-embedding-3-small", "text-embedding-3-large"],
             index=0,
-            help="Fuer die Vektorsuche (RAG). 'small' ist schneller und guenstiger.",
+            help="'small' ist schneller und guenstiger.",
         )
 
         st.markdown("")
-        if st.form_submit_button("💾 Modelle speichern", use_container_width=True):
+        if st.form_submit_button("Speichern", use_container_width=True):
             prefs["default_models"] = {
                 "planning": planning_model,
                 "generation": generation_model,
@@ -158,23 +169,26 @@ def _render_models(prefs: dict):
 # ---------------------------------------------------------------------------
 
 def _render_generation_strategy(prefs: dict):
-    st.subheader("⚡ Batch-Generierung")
+    st.subheader("Batch-Generierung")
     st.caption("Steuert wie viele Folien pro LLM-Aufruf generiert werden.")
 
-    col1, col2 = st.columns([2, 1])
+    current_batch = prefs.get("batch_size", 4)
+    col1, col2 = st.columns(2)
     with col1:
-        batch_size = st.slider(
-            "Folien pro Batch",
-            min_value=1,
-            max_value=8,
-            value=prefs.get("batch_size", 4),
-            key="settings_batch_size",
-            help="Mehr Folien pro Batch = schneller, aber weniger Kontrolle. Empfohlen: 3-5.",
-        )
+        st.metric("Batch-Groesse", f"{current_batch} Folien")
     with col2:
-        st.metric("Aktuell", f"{batch_size} Folien")
+        st.metric("Empfehlung", "3–5 Folien")
 
-    if st.button("💾 Speichern", key="save_strategy", use_container_width=True):
+    batch_size = st.slider(
+        "Folien pro Batch",
+        min_value=1,
+        max_value=8,
+        value=current_batch,
+        key="settings_batch_size",
+        help="Mehr Folien pro Batch = schneller, aber weniger Kontrolle.",
+    )
+
+    if st.button("Speichern", key="save_strategy", use_container_width=True):
         prefs["batch_size"] = batch_size
         save_preferences(prefs)
         st.success("Batch-Groesse gespeichert!")
@@ -182,7 +196,7 @@ def _render_generation_strategy(prefs: dict):
     st.divider()
 
     # Debug section
-    st.subheader("🐛 Prompt-Debug-Modus")
+    st.subheader("Prompt-Debug-Modus")
     st.caption("Loggt jeden LLM-Aufruf mit vollstaendigem Prompt, Chunks und Antwort.")
 
     debug_on = st.toggle(
@@ -242,19 +256,27 @@ def _render_generation_strategy(prefs: dict):
 def _render_rag_settings(prefs: dict):
     rag = prefs.get("rag", {})
 
+    # Overview metrics
+    st.subheader("RAG & Retrieval")
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Chunks Planung", rag.get("n_sources_planning", 5))
+    m2.metric("Chunks Generierung", rag.get("n_sources_generation", 3))
+    m3.metric("Chunk-Groesse", f"{rag.get('chunk_size', 500)} Tok")
+    m4.metric("Kontext-Limit", f"{rag.get('max_context_chars', 6000):,} Z")
+
+    st.markdown("")
+
     with st.form("rag_form"):
         # --- Retrieval ---
-        st.subheader("🔍 Retrieval (Quellensuche)")
-        st.caption("Wie viele Chunks bei der Suche zurueckgegeben werden.")
-
+        st.markdown("**Retrieval (Quellensuche)**")
         col1, col2 = st.columns(2)
         with col1:
-            st.markdown("**📋 Planung**")
+            st.caption("Planung")
             n_sources_planning = st.number_input(
                 "Quell-Chunks",
                 min_value=1, max_value=20,
                 value=rag.get("n_sources_planning", 5),
-                help="Chunks aus Projektquellen fuer die Sektionsplanung",
+                help="Chunks fuer die Sektionsplanung",
                 key="rag_src_plan",
             )
             n_global_planning = st.number_input(
@@ -265,12 +287,12 @@ def _render_rag_settings(prefs: dict):
                 key="rag_glob_plan",
             )
         with col2:
-            st.markdown("**🎯 Generierung**")
+            st.caption("Generierung")
             n_sources_generation = st.number_input(
                 "Quell-Chunks",
                 min_value=1, max_value=20,
                 value=rag.get("n_sources_generation", 3),
-                help="Chunks aus Projektquellen fuer die Slide-Erstellung",
+                help="Chunks fuer die Slide-Erstellung",
                 key="rag_src_gen",
             )
             n_global_generation = st.number_input(
@@ -283,51 +305,47 @@ def _render_rag_settings(prefs: dict):
 
         st.divider()
 
-        # --- Auto-Chunk Assignment ---
-        st.subheader("📌 Auto-Chunk-Zuordnung")
-        st.caption("Nach der Sektionsplanung werden automatisch passende Chunks pro Folie zugeordnet.")
-        n_chunks_per_slide = st.number_input(
-            "Chunks pro Folie",
-            min_value=1, max_value=10,
-            value=rag.get("n_chunks_per_slide", 3),
-            help="Mehr Chunks = mehr Kontext, aber auch mehr Tokens",
-        )
-
-        st.divider()
-
-        # --- Context Limit ---
-        st.subheader("📏 Kontext-Limit")
-        st.caption("Maximale Zeichenzahl fuer den RAG-Kontext im LLM-Prompt.")
-        max_context_chars = st.slider(
-            "Max. Zeichen",
-            min_value=1000, max_value=30000, step=500,
-            value=rag.get("max_context_chars", 6000),
-            help="Groessere Werte = mehr Kontext, aber mehr Tokens und Kosten.",
-        )
+        # --- Auto-Chunk + Context ---
+        st.markdown("**Chunk-Zuordnung & Kontext**")
+        col3, col4 = st.columns(2)
+        with col3:
+            n_chunks_per_slide = st.number_input(
+                "Chunks pro Folie",
+                min_value=1, max_value=10,
+                value=rag.get("n_chunks_per_slide", 3),
+                help="Mehr Chunks = mehr Kontext, aber auch mehr Tokens",
+            )
+        with col4:
+            max_context_chars = st.slider(
+                "Max. Zeichen im Prompt",
+                min_value=1000, max_value=30000, step=500,
+                value=rag.get("max_context_chars", 6000),
+                help="Groessere Werte = mehr Kontext, mehr Tokens.",
+            )
 
         st.divider()
 
         # --- Chunking ---
-        st.subheader("✂️ Chunking (Textaufteilung)")
-        st.caption("Einstellungen fuer die Aufteilung hochgeladener Quellen in Chunks. Aenderungen wirken nur bei neuem Upload.")
-        col3, col4 = st.columns(2)
-        with col3:
+        st.markdown("**Chunking (Textaufteilung)**")
+        st.caption("Aenderungen wirken nur bei neuem Upload.")
+        col5, col6 = st.columns(2)
+        with col5:
             chunk_size = st.number_input(
                 "Chunk-Groesse (Tokens)",
                 min_value=100, max_value=2000, step=50,
                 value=rag.get("chunk_size", 500),
-                help="~4 Zeichen pro Token. Groessere Chunks = mehr Kontext pro Chunk.",
+                help="~4 Zeichen pro Token.",
             )
-        with col4:
+        with col6:
             chunk_overlap = st.number_input(
                 "Ueberlappung (Tokens)",
                 min_value=0, max_value=500, step=10,
                 value=rag.get("chunk_overlap", 50),
-                help="Ueberlappung verhindert, dass Informationen an Chunk-Grenzen verloren gehen.",
+                help="Verhindert Informationsverlust an Chunk-Grenzen.",
             )
 
         st.markdown("")
-        if st.form_submit_button("💾 RAG-Einstellungen speichern", use_container_width=True):
+        if st.form_submit_button("Speichern", use_container_width=True):
             prefs["rag"] = {
                 "n_sources_planning": n_sources_planning,
                 "n_global_planning": n_global_planning,
@@ -343,7 +361,7 @@ def _render_rag_settings(prefs: dict):
 
     # Migration button outside form
     st.divider()
-    st.subheader("🔄 Distanzmetrik migrieren")
+    st.subheader("Distanzmetrik migrieren")
     st.caption(
         "Stellt bestehende ChromaDB-Collections von L2 auf Cosine-Distanz um. "
         "Danach zeigen Relevanzwerte sinnvolle Prozentwerte (0-100%)."
@@ -378,7 +396,7 @@ _PHASE_LABELS = {
 
 
 def _render_prompt_editor(prefs: dict):
-    st.subheader("✏️ Prompt-Editor")
+    st.subheader("Prompt-Editor")
     st.caption(
         "Bearbeite die System-Prompts fuer jede Phase. "
         "Du kannst eigene Varianten erstellen und zwischen ihnen wechseln."
@@ -511,8 +529,19 @@ def _render_prompt_editor(prefs: dict):
 # ---------------------------------------------------------------------------
 
 def _render_preferences(prefs: dict):
-    st.subheader("🎨 Praeferenzen")
+    st.subheader("Praeferenzen")
     st.caption("Globale Standardwerte fuer neue Projekte.")
+
+    _length_labels = {"short": "Kurz", "medium": "Mittel", "long": "Ausfuehrlich"}
+    _lang_labels = {"de": "Deutsch", "en": "English"}
+
+    # Overview
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Sprache", _lang_labels.get(prefs.get("default_language", "de"), "—"))
+    col2.metric("Textumfang", _length_labels.get(prefs.get("default_text_length", "medium"), "—"))
+    col3.metric("Tonalitaet", prefs.get("tonality", "—") or "—")
+
+    st.markdown("")
 
     with st.form("prefs_form"):
         col1, col2 = st.columns(2)
@@ -522,13 +551,13 @@ def _render_preferences(prefs: dict):
                 "Standard-Sprache",
                 LANGUAGES,
                 index=LANGUAGES.index(prefs.get("default_language", "de")),
-                format_func=lambda x: "🇩🇪 Deutsch" if x == "de" else "🇬🇧 English",
+                format_func=lambda x: _lang_labels.get(x, x),
             )
             text_length = st.selectbox(
                 "Standard-Textumfang",
                 TEXT_LENGTHS,
                 index=TEXT_LENGTHS.index(prefs.get("default_text_length", "medium")),
-                format_func=lambda x: {"short": "Kurz", "medium": "Mittel", "long": "Ausfuehrlich"}.get(x, x),
+                format_func=lambda x: _length_labels.get(x, x),
             )
 
         with col2:
@@ -559,7 +588,7 @@ def _render_preferences(prefs: dict):
         )
 
         st.markdown("")
-        if st.form_submit_button("💾 Praeferenzen speichern", use_container_width=True):
+        if st.form_submit_button("Speichern", use_container_width=True):
             prefs["default_language"] = language
             prefs["default_text_length"] = text_length
             prefs["tonality"] = tonality
