@@ -24,7 +24,7 @@ from slidebuddy.db.queries import (
 from slidebuddy.rag.retrieval import search_project_sources
 from slidebuddy.ui.components.delete_confirm import render_delete_button, render_delete_trigger
 from slidebuddy.ui.components.inline_edit import inline_select, inline_text
-from slidebuddy.ui.components.rag_context import render_chunk_search, render_pinned_chunks, render_rag_chunks
+from slidebuddy.ui.components.rag_context import render_chunk_search
 from slidebuddy.ui.components.reorder import render_reorder
 from slidebuddy.ui.components.stepbar import render_stepbar
 
@@ -75,8 +75,6 @@ def render_section_planning():
         st.session_state.sections_approved = False
     if "section_feedback" not in st.session_state:
         st.session_state.section_feedback = {}
-    if "pinned_chunks" not in st.session_state:
-        st.session_state.pinned_chunks = {}  # {chapter_idx: [chunk_dicts]}
 
     tab_labels = [f"Kap. {i+1}: {ch['title']}" for i, ch in enumerate(chapters)]
     tabs = st.tabs(tab_labels)
@@ -85,9 +83,6 @@ def render_section_planning():
     for i, (tab, chapter) in enumerate(zip(tabs, chapters)):
         with tab:
             plan = st.session_state.section_plans.get(i)
-
-            # RAG context: chunk search + pinned chunks
-            _render_chapter_rag(project, chapter, i)
 
             if plan:
                 _render_section_plan(project, chapter, i, plan, conn)
@@ -227,23 +222,15 @@ def _get_template_icon(template_type: str) -> str:
 # LLM generation
 # ---------------------------------------------------------------------------
 
-def _render_chapter_rag(project, chapter: dict, chapter_idx: int):
-    """Show RAG chunk search and pinned chunks for a chapter."""
-    pinned = st.session_state.pinned_chunks.get(chapter_idx, [])
-
-    def _add_chunk(chunk, _ci=chapter_idx):
-        if _ci not in st.session_state.pinned_chunks:
-            st.session_state.pinned_chunks[_ci] = []
-        # Avoid duplicates by chunk text
-        existing_texts = {c["text"] for c in st.session_state.pinned_chunks[_ci]}
-        if chunk["text"] not in existing_texts:
-            st.session_state.pinned_chunks[_ci].append(chunk)
-
-    def _remove_chunk(idx, _ci=chapter_idx):
-        st.session_state.pinned_chunks[_ci].pop(idx)
-
-    render_pinned_chunks(pinned, f"sec_pin_{chapter_idx}", on_remove=_remove_chunk)
-    render_chunk_search(project.id, f"sec_rag_{chapter_idx}", on_add=_add_chunk)
+def _auto_attach_chunks(project_id: str, chapter_title: str, plan: dict):
+    """Auto-retrieve relevant RAG chunks for each slide in a plan."""
+    from slidebuddy.config.defaults import load_preferences
+    rag = load_preferences().get("rag", {})
+    n_per_slide = rag.get("n_chunks_per_slide", 3)
+    for slide in plan.get("slides", []):
+        query = f"{chapter_title} {slide.get('brief', '')}"
+        results = search_project_sources(project_id, query, n_results=n_per_slide)
+        slide["chunks"] = [{**chunk, "selected": True} for chunk in results]
 
 
 def _render_plan_button(project, chapter: dict, chapter_idx: int, conn):
@@ -255,7 +242,6 @@ def _render_plan_button(project, chapter: dict, chapter_idx: int, conn):
 
 
 def _run_section_planning(project, chapter: dict, chapter_idx: int, conn, feedback: str | None = None):
-    pinned = st.session_state.pinned_chunks.get(chapter_idx, [])
     with st.spinner(f"Folienplan fuer '{chapter['title']}' wird erstellt..."):
         try:
             result = plan_sections(
@@ -264,8 +250,8 @@ def _run_section_planning(project, chapter: dict, chapter_idx: int, conn, feedba
                 language=project.language,
                 project_override=project.parsed_override,
                 user_feedback=feedback,
-                extra_chunks=pinned,
             )
+            _auto_attach_chunks(project.id, chapter["title"], result)
             st.session_state.section_plans[chapter_idx] = result
             st.session_state.sections_approved = False
             # Persist immediately
@@ -306,6 +292,7 @@ def _render_section_plan(project, chapter: dict, chapter_idx: int, plan: dict, c
                         "template_type": available_types[0] if available_types else "numbered",
                         "brief": "Neue Folie",
                         "reused_slide_id": None,
+                        "chunks": [],
                     })
                     _save_section_plan(conn, project.id, chapter_idx, plan)
                     st.rerun()
@@ -384,9 +371,83 @@ def _render_slide_card(chapter_idx: int, slide_idx: int, slide: dict, total: int
                 on_change=_update_brief,
             )
 
+            # Per-slide chunk management
+            _render_slide_chunks(chapter_idx, slide_idx, slide, project_id, conn)
+
             # Delete trigger at the bottom of the card
             if total > 1:
                 render_delete_trigger(f"_sec_confirm_delete_{chapter_idx}_{slide_idx}", f"sec_del_trigger_{chapter_idx}_{slide_idx}")
+
+
+# ---------------------------------------------------------------------------
+# Per-slide chunk management
+# ---------------------------------------------------------------------------
+
+def _render_slide_chunks(chapter_idx: int, slide_idx: int, slide: dict, project_id: str, conn):
+    """Render chunk selection UI inside a slide card."""
+    chunks = slide.get("chunks", [])
+    selected_count = sum(1 for c in chunks if c.get("selected", True))
+    label = f"Quellen ({selected_count}/{len(chunks)})" if chunks else "Quellen (0)"
+
+    with st.expander(label, expanded=False):
+        if chunks:
+            for ci, chunk in enumerate(chunks):
+                meta = chunk.get("metadata", {})
+                filename = meta.get("filename", "?")
+                distance = chunk.get("distance")
+                dist_label = f" | Relevanz: {1 - distance:.0%}" if distance is not None else ""
+                chars = len(chunk.get("text", ""))
+
+                with st.container(border=True):
+                    # Header row: checkbox + filename + stats + remove
+                    col_cb, col_info, col_rm = st.columns([0.5, 5, 0.5])
+                    with col_cb:
+                        cb_key = f"chunk_sel_{chapter_idx}_{slide_idx}_{ci}"
+                        new_val = st.checkbox(
+                            "sel", value=chunk.get("selected", True),
+                            key=cb_key, label_visibility="collapsed",
+                        )
+                        if new_val != chunk.get("selected", True):
+                            slide["chunks"][ci]["selected"] = new_val
+                            _save_section_plan(conn, project_id, chapter_idx,
+                                               st.session_state.section_plans[chapter_idx])
+                    with col_info:
+                        st.caption(f"**{filename}** (Chunk {meta.get('chunk_index', '?')}){dist_label} | {chars} Zeichen")
+                    with col_rm:
+                        if st.button("X", key=f"chunk_rm_{chapter_idx}_{slide_idx}_{ci}"):
+                            slide["chunks"].pop(ci)
+                            _save_section_plan(conn, project_id, chapter_idx,
+                                               st.session_state.section_plans[chapter_idx])
+                            st.rerun()
+
+                    # Editable chunk text
+                    ta_key = f"chunk_text_{chapter_idx}_{slide_idx}_{ci}"
+                    edited = st.text_area(
+                        "Chunk-Text",
+                        value=chunk.get("text", ""),
+                        height=120,
+                        key=ta_key,
+                        label_visibility="collapsed",
+                    )
+                    if edited != chunk.get("text", ""):
+                        slide["chunks"][ci]["text"] = edited
+                        _save_section_plan(conn, project_id, chapter_idx,
+                                           st.session_state.section_plans[chapter_idx])
+        else:
+            st.caption("Keine Chunks zugeordnet.")
+
+        # Search and add new chunks
+        def _add_chunk(chunk, _ci=chapter_idx, _si=slide_idx):
+            target = st.session_state.section_plans[_ci]["slides"][_si]
+            if "chunks" not in target:
+                target["chunks"] = []
+            existing_texts = {c["text"] for c in target["chunks"]}
+            if chunk["text"] not in existing_texts:
+                target["chunks"].append({**chunk, "selected": True})
+                _save_section_plan(conn, project_id, _ci,
+                                   st.session_state.section_plans[_ci])
+
+        render_chunk_search(project_id, f"slide_rag_{chapter_idx}_{slide_idx}", on_add=_add_chunk)
 
 
 # ---------------------------------------------------------------------------

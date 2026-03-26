@@ -4,6 +4,7 @@ import logging
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from slidebuddy.config.defaults import load_preferences
 from slidebuddy.llm.prompt_assembler import assemble_prompt
 from slidebuddy.llm.response_parser import parse_llm_json
 from slidebuddy.llm.router import get_llm
@@ -38,8 +39,13 @@ def plan_sections(
     )
 
     # RAG: both searches run in parallel via threads
+    rag = load_preferences().get("rag", {})
     query = f"{chapter['title']} {chapter.get('summary', '')} {' '.join(chapter.get('key_topics', []))}"
-    source_chunks, rag_slides = search_all(project_id, query, language=language, n_sources=5, n_global=3)
+    source_chunks, rag_slides = search_all(
+        project_id, query, language=language,
+        n_sources=rag.get("n_sources_planning", 5),
+        n_global=rag.get("n_global_planning", 3),
+    )
 
     user_parts = [
         f"KAPITEL: {chapter['title']}",

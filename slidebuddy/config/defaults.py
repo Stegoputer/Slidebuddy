@@ -22,6 +22,16 @@ DEFAULT_PREFERENCES = {
     "batch_size": 4,
     "custom_prompts": {},
     "active_prompts": {},
+    "rag": {
+        "n_sources_planning": 5,
+        "n_global_planning": 3,
+        "n_sources_generation": 3,
+        "n_global_generation": 2,
+        "n_chunks_per_slide": 3,
+        "max_context_chars": 6000,
+        "chunk_size": 500,
+        "chunk_overlap": 50,
+    },
 }
 
 TEMPLATE_TYPES = [

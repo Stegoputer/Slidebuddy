@@ -17,7 +17,7 @@ def render_settings():
 
     prefs = load_preferences()
 
-    tabs = st.tabs(["API-Keys", "Modelle", "Generierung", "Prompts", "Praeferenzen"])
+    tabs = st.tabs(["API-Keys", "Modelle", "Generierung", "RAG", "Prompts", "Praeferenzen"])
 
     with tabs[0]:
         _render_api_keys(prefs)
@@ -29,9 +29,12 @@ def render_settings():
         _render_generation_strategy(prefs)
 
     with tabs[3]:
-        _render_prompt_editor(prefs)
+        _render_rag_settings(prefs)
 
     with tabs[4]:
+        _render_prompt_editor(prefs)
+
+    with tabs[5]:
         _render_preferences(prefs)
 
 
@@ -170,6 +173,97 @@ def _render_generation_strategy(prefs: dict):
                     )
         else:
             st.caption("Noch keine Calls geloggt. Starte eine Generierung.")
+
+
+# ---------------------------------------------------------------------------
+# RAG Settings
+# ---------------------------------------------------------------------------
+
+def _render_rag_settings(prefs: dict):
+    rag = prefs.get("rag", {})
+
+    with st.form("rag_form"):
+        st.subheader("Retrieval (Quellensuche)")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("**Planung (Kapitel + Sektionen)**")
+            n_sources_planning = st.number_input(
+                "Quell-Chunks pro Suche",
+                min_value=1, max_value=20,
+                value=rag.get("n_sources_planning", 5),
+                help="Anzahl der Quell-Chunks bei der Sektionsplanung",
+            )
+            n_global_planning = st.number_input(
+                "Globale Slides pro Suche",
+                min_value=0, max_value=10,
+                value=rag.get("n_global_planning", 3),
+                help="Anzahl wiederverwendbarer Slides aus frueheren Projekten",
+            )
+        with col2:
+            st.markdown("**Generierung (Slide-Erstellung)**")
+            n_sources_generation = st.number_input(
+                "Quell-Chunks pro Suche ",
+                min_value=1, max_value=20,
+                value=rag.get("n_sources_generation", 3),
+                help="Anzahl der Quell-Chunks bei der Slide-Generierung",
+            )
+            n_global_generation = st.number_input(
+                "Globale Slides pro Suche ",
+                min_value=0, max_value=10,
+                value=rag.get("n_global_generation", 2),
+                help="Anzahl wiederverwendbarer Slides bei der Generierung",
+            )
+
+        st.divider()
+        st.subheader("Auto-Chunk-Zuordnung")
+        n_chunks_per_slide = st.number_input(
+            "Chunks pro Folie (nach Sektionsplanung)",
+            min_value=1, max_value=10,
+            value=rag.get("n_chunks_per_slide", 3),
+            help="Wie viele Chunks automatisch pro Folie zugeordnet werden",
+        )
+
+        st.divider()
+        st.subheader("Kontext-Limit")
+        max_context_chars = st.number_input(
+            "Max. Zeichen fuer RAG-Kontext im Prompt",
+            min_value=1000, max_value=30000, step=500,
+            value=rag.get("max_context_chars", 6000),
+            help="Zeichenbudget fuer Quellkontext im LLM-Prompt. Groessere Werte = mehr Kontext, aber mehr Tokens.",
+        )
+
+        st.divider()
+        st.subheader("Chunking (Textaufteilung)")
+        col3, col4 = st.columns(2)
+        with col3:
+            chunk_size = st.number_input(
+                "Chunk-Groesse (Tokens)",
+                min_value=100, max_value=2000, step=50,
+                value=rag.get("chunk_size", 500),
+                help="Ziel-Groesse pro Chunk in Tokens (~4 Zeichen/Token). Aenderung wirkt nur bei neuem Upload.",
+            )
+        with col4:
+            chunk_overlap = st.number_input(
+                "Chunk-Ueberlappung (Tokens)",
+                min_value=0, max_value=500, step=10,
+                value=rag.get("chunk_overlap", 50),
+                help="Ueberlappung zwischen Chunks. Aenderung wirkt nur bei neuem Upload.",
+            )
+
+        if st.form_submit_button("RAG-Einstellungen speichern"):
+            prefs["rag"] = {
+                "n_sources_planning": n_sources_planning,
+                "n_global_planning": n_global_planning,
+                "n_sources_generation": n_sources_generation,
+                "n_global_generation": n_global_generation,
+                "n_chunks_per_slide": n_chunks_per_slide,
+                "max_context_chars": max_context_chars,
+                "chunk_size": chunk_size,
+                "chunk_overlap": chunk_overlap,
+            }
+            save_preferences(prefs)
+            st.success("RAG-Einstellungen gespeichert!")
 
 
 # ---------------------------------------------------------------------------

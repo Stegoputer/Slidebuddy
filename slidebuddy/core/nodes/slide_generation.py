@@ -5,6 +5,7 @@ from collections.abc import Callable
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from slidebuddy.config.defaults import load_preferences
 from slidebuddy.llm.prompt_assembler import assemble_prompt
 from slidebuddy.llm.response_parser import parse_llm_json
 from slidebuddy.llm.router import get_llm
@@ -41,10 +42,13 @@ def generate_slide(
         project_override=project_override,
     )
 
+    rag = load_preferences().get("rag", {})
     source_chunks, global_slides = search_all(
         project_id,
         f"{chapter_context['title']} {slide_plan.get('brief', '')}",
         language=language,
+        n_sources=rag.get("n_sources_generation", 3),
+        n_global=rag.get("n_global_generation", 2),
     )
 
     # Merge pinned chunks (from section planning) with auto-retrieved
@@ -55,7 +59,7 @@ def generate_slide(
                 source_chunks.append(ec)
                 seen.add(ec["text"])
 
-    rag_text = _format_rag_context(source_chunks, global_slides)
+    rag_text = _format_rag_context(source_chunks, global_slides, max_total_chars=rag.get("max_context_chars", 6000))
 
     lang_label = "Deutsch" if language == "de" else "English"
 
@@ -118,6 +122,7 @@ def generate_slides_batch(
     all_results = []
     total = len(slide_plans)
     llm = get_llm("generation")
+    rag = load_preferences().get("rag", {})
 
     for batch_start in range(0, total, batch_size):
         batch_end = min(batch_start + batch_size, total)
@@ -132,8 +137,21 @@ def generate_slides_batch(
         )
 
         query = f"{chapter_context['title']} {' '.join(p.get('brief', '') for p in batch_plans)}"
-        source_chunks, global_slides = search_all(project_id, query, language=language)
-        rag_text = _format_rag_context(source_chunks, global_slides)
+        source_chunks, global_slides = search_all(
+            project_id, query, language=language,
+            n_sources=rag.get("n_sources_generation", 3),
+            n_global=rag.get("n_global_generation", 2),
+        )
+
+        # Merge per-slide pinned chunks from section plans
+        seen = {c["text"] for c in source_chunks}
+        for p in batch_plans:
+            for ec in p.get("chunks", []):
+                if ec.get("selected", True) and ec["text"] not in seen:
+                    source_chunks.append(ec)
+                    seen.add(ec["text"])
+
+        rag_text = _format_rag_context(source_chunks, global_slides, max_total_chars=rag.get("max_context_chars", 6000))
 
         lang_label = "Deutsch" if language == "de" else "English"
 

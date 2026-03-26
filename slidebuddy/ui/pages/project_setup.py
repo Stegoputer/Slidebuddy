@@ -1,5 +1,5 @@
 import streamlit as st
-from slidebuddy.config.defaults import DB_PATH, UPLOADS_DIR, LANGUAGES, TEXT_LENGTHS
+from slidebuddy.config.defaults import DB_PATH, UPLOADS_DIR, LANGUAGES, TEXT_LENGTHS, load_preferences
 from slidebuddy.db.migrations import get_connection
 from slidebuddy.db.queries import (
     create_project, delete_project, get_project, get_all_projects,
@@ -171,7 +171,8 @@ def _render_project_detail(project_id: str):
                 try:
                     update_source_status(conn, source.id, "processing")
                     text = parse_source(file_path)
-                    chunks = chunk_text(text)
+                    rag_prefs = load_preferences().get("rag", {})
+                    chunks = chunk_text(text, chunk_size=rag_prefs.get("chunk_size", 500), overlap=rag_prefs.get("chunk_overlap", 50))
                     add_source_chunks(
                         project_id, source.id, chunks,
                         {"source_type": source_type, "filename": uploaded_file.name},
@@ -205,7 +206,8 @@ def _render_project_detail(project_id: str):
                     original_text=transcript,
                 )
                 create_source(conn, source)
-                chunks = chunk_text(transcript)
+                rag_prefs = load_preferences().get("rag", {})
+                chunks = chunk_text(transcript, chunk_size=rag_prefs.get("chunk_size", 500), overlap=rag_prefs.get("chunk_overlap", 50))
                 add_source_chunks(
                     project_id, source.id, chunks,
                     {"source_type": "youtube", "filename": display_name},

@@ -86,9 +86,11 @@ def _format_source_summaries(summaries: list[str]) -> str:
 
 def _get_topic_rag_context(project_id: str, topic: str) -> str:
     """Search RAG for existing slides related to the topic."""
+    from slidebuddy.config.defaults import load_preferences
     from slidebuddy.rag.retrieval import search_global_slides
 
-    hits = search_global_slides(topic, n_results=3)
+    rag = load_preferences().get("rag", {})
+    hits = search_global_slides(topic, n_results=rag.get("n_global_planning", 3))
     if not hits:
         return ""
 

@@ -232,7 +232,7 @@ def _generate_next_slide(project, chapter, chapter_idx, slide_plans, slide_idx, 
                 slide_index=slide_idx + 1,
                 total_slides_in_chapter=len(slide_plans),
                 project_override=project.parsed_override,
-                extra_chunks=_get_pinned_chunks(chapter_idx),
+                extra_chunks=[c for c in slide_plan.get("chunks", []) if c.get("selected", True)],
             )
             _store_slide_result(chapter_idx, slide_idx, global_idx, slide_plan, result)
             st.rerun()
@@ -274,11 +274,6 @@ def _generate_batch(project, chapter, chapter_idx, slide_plans, start_idx, text_
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
-
-def _get_pinned_chunks(chapter_idx: int) -> list[dict]:
-    """Get manually pinned chunks for a chapter from section planning."""
-    return st.session_state.get("pinned_chunks", {}).get(chapter_idx, [])
-
 
 def _calc_global_index(chapter_idx: int, slide_idx: int) -> int:
     return sum(len(st.session_state.gen_slides.get(i, [])) for i in range(chapter_idx)) + slide_idx + 1
