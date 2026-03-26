@@ -54,15 +54,16 @@ def plan_sections(
         f"KERNTHEMEN: {', '.join(chapter.get('key_topics', []))}",
     ]
 
-    # Merge auto-retrieved + manually pinned chunks (pinned first for priority)
+    # Merge auto-retrieved + manually pinned chunks, deduplicate
     all_source_chunks = list(extra_chunks or []) + source_chunks
-    # Deduplicate by text
     seen_texts: set[str] = set()
     unique_chunks: list[dict] = []
     for c in all_source_chunks:
         if c["text"] not in seen_texts:
             seen_texts.add(c["text"])
             unique_chunks.append(c)
+    # Sort by distance ascending (most relevant first)
+    unique_chunks.sort(key=lambda c: c.get("distance") if c.get("distance") is not None else float("inf"))
 
     if unique_chunks:
         source_text = "\n".join(

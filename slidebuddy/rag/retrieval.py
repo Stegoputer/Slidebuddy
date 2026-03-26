@@ -101,4 +101,6 @@ def _format_results(results: dict) -> list[dict]:
             "metadata": results["metadatas"][0][i] if results.get("metadatas") else {},
         }
         formatted.append(entry)
+    # Sort by distance ascending (most relevant first)
+    formatted.sort(key=lambda c: c["distance"] if c["distance"] is not None else float("inf"))
     return formatted

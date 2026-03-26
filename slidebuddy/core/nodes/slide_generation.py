@@ -59,6 +59,9 @@ def generate_slide(
                 source_chunks.append(ec)
                 seen.add(ec["text"])
 
+    # Sort by distance ascending (most relevant first) so context budget is used on best chunks
+    source_chunks.sort(key=lambda c: c.get("distance") if c.get("distance") is not None else float("inf"))
+
     rag_text = _format_rag_context(source_chunks, global_slides, max_total_chars=rag.get("max_context_chars", 6000))
 
     lang_label = "Deutsch" if language == "de" else "English"
@@ -150,6 +153,9 @@ def generate_slides_batch(
                 if ec.get("selected", True) and ec["text"] not in seen:
                     source_chunks.append(ec)
                     seen.add(ec["text"])
+
+        # Sort by distance ascending (most relevant first) so context budget is used on best chunks
+        source_chunks.sort(key=lambda c: c.get("distance") if c.get("distance") is not None else float("inf"))
 
         rag_text = _format_rag_context(source_chunks, global_slides, max_total_chars=rag.get("max_context_chars", 6000))
 
