@@ -120,12 +120,14 @@ def _render_models(prefs: dict):
     default_models = prefs.get("default_models", {})
 
     # Current model overview
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Planung", default_models.get("planning", all_models[0]).split("/")[-1] if default_models.get("planning") else "—")
     with col2:
         st.metric("Generierung", default_models.get("generation", all_models[0]).split("/")[-1] if default_models.get("generation") else "—")
     with col3:
+        st.metric("Master-Analyse", default_models.get("master_analysis", all_models[0]).split("/")[-1] if default_models.get("master_analysis") else "—")
+    with col4:
         st.metric("Embeddings", default_models.get("embedding", "text-embedding-3-small"))
 
     st.markdown("")
@@ -145,6 +147,13 @@ def _render_models(prefs: dict):
             help="Staerkere Modelle liefern bessere Inhalte.",
         )
 
+        master_analysis_model = st.selectbox(
+            "Master-Analyse (Layout-Erkennung)",
+            all_models,
+            index=all_models.index(default_models.get("master_analysis", all_models[0])) if default_models.get("master_analysis") in all_models else 0,
+            help="Analysiert PPTX-Layouts und generiert Purpose/Beschreibung. Staerkere Modelle (z.B. Claude Opus) liefern bessere Ergebnisse.",
+        )
+
         embedding_model = st.selectbox(
             "Embedding-Modell",
             ["text-embedding-3-small", "text-embedding-3-large"],
@@ -157,6 +166,7 @@ def _render_models(prefs: dict):
             prefs["default_models"] = {
                 "planning": planning_model,
                 "generation": generation_model,
+                "master_analysis": master_analysis_model,
                 "embedding": embedding_model,
             }
             save_preferences(prefs)

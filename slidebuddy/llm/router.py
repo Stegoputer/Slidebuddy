@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 _TASK_TEMPERATURES = {
     "planning": 0.3,
     "generation": 0.7,
+    "master_analysis": 0.2,
 }
 
 # LLM instance cache — keyed by (model_name, temperature).

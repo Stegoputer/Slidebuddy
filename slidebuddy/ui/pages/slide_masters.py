@@ -170,10 +170,10 @@ def _import_master(conn, uploaded_file, name: str):
 
 
 def _get_llm_suggestions(layouts: list[dict]) -> list[dict] | None:
-    """Call LLM to get display_name, description, prompt suggestions."""
+    """Call LLM to get display_name, description, purpose, prompt suggestions."""
     try:
         from slidebuddy.llm.router import get_llm
-        llm = get_llm("planning")
+        llm = get_llm("master_analysis")
         prompt = build_llm_analysis_prompt(layouts)
         response = llm.invoke(prompt)
         content = response.content if hasattr(response, "content") else str(response)
