@@ -272,14 +272,14 @@ def _render_rag_settings(prefs: dict):
         col1, col2 = st.columns(2)
         with col1:
             st.caption("Planung")
-            n_sources_planning = st.number_input(
+            n_sources_planning = st.slider(
                 "Quell-Chunks",
                 min_value=1, max_value=20,
                 value=rag.get("n_sources_planning", 5),
                 help="Chunks fuer die Sektionsplanung",
                 key="rag_src_plan",
             )
-            n_global_planning = st.number_input(
+            n_global_planning = st.slider(
                 "Globale Slides",
                 min_value=0, max_value=10,
                 value=rag.get("n_global_planning", 3),
@@ -288,14 +288,14 @@ def _render_rag_settings(prefs: dict):
             )
         with col2:
             st.caption("Generierung")
-            n_sources_generation = st.number_input(
+            n_sources_generation = st.slider(
                 "Quell-Chunks",
                 min_value=1, max_value=20,
                 value=rag.get("n_sources_generation", 3),
                 help="Chunks fuer die Slide-Erstellung",
                 key="rag_src_gen",
             )
-            n_global_generation = st.number_input(
+            n_global_generation = st.slider(
                 "Globale Slides",
                 min_value=0, max_value=10,
                 value=rag.get("n_global_generation", 2),
@@ -309,7 +309,7 @@ def _render_rag_settings(prefs: dict):
         st.markdown("**Chunk-Zuordnung & Kontext**")
         col3, col4 = st.columns(2)
         with col3:
-            n_chunks_per_slide = st.number_input(
+            n_chunks_per_slide = st.slider(
                 "Chunks pro Folie",
                 min_value=1, max_value=10,
                 value=rag.get("n_chunks_per_slide", 3),
@@ -330,14 +330,14 @@ def _render_rag_settings(prefs: dict):
         st.caption("Aenderungen wirken nur bei neuem Upload.")
         col5, col6 = st.columns(2)
         with col5:
-            chunk_size = st.number_input(
+            chunk_size = st.slider(
                 "Chunk-Groesse (Tokens)",
                 min_value=100, max_value=2000, step=50,
                 value=rag.get("chunk_size", 500),
                 help="~4 Zeichen pro Token.",
             )
         with col6:
-            chunk_overlap = st.number_input(
+            chunk_overlap = st.slider(
                 "Ueberlappung (Tokens)",
                 min_value=0, max_value=500, step=10,
                 value=rag.get("chunk_overlap", 50),
