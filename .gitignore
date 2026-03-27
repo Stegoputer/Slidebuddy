@@ -13,4 +13,5 @@ slidebuddy/data/uploads/
 *.log
 slidebuddy/data/prompt_debug.jsonl
 slidebuddy/data/masters/
+preferences.json
 .claude/

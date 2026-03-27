@@ -147,11 +147,18 @@ def _render_project_detail(project_id: str):
         )
         submit = st.form_submit_button("Hochladen & verarbeiten", type="primary", use_container_width=True)
 
+    _MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
+
     if submit and uploaded_files:
         existing_sources = {s.filename for s in get_sources_for_project(conn, project_id)}
         for uploaded_file in uploaded_files:
             if uploaded_file.name in existing_sources:
                 st.info(f"'{uploaded_file.name}' ist bereits vorhanden — übersprungen.")
+                continue
+
+            file_size = len(uploaded_file.getbuffer())
+            if file_size > _MAX_UPLOAD_BYTES:
+                st.error(f"'{uploaded_file.name}' ist zu gross ({file_size / 1024 / 1024:.0f} MB). Maximum: 50 MB.")
                 continue
 
             file_path = UPLOADS_DIR / project_id / uploaded_file.name

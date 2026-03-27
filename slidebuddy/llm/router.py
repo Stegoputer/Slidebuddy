@@ -3,7 +3,7 @@ from typing import Optional
 
 from langchain_core.language_models import BaseChatModel
 
-from slidebuddy.config.defaults import load_preferences
+from slidebuddy.config.defaults import get_all_api_keys, get_api_key, load_preferences
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,6 @@ _FALLBACK_MODELS = {
 def get_llm(task: str = "generation", model_override: Optional[str] = None) -> BaseChatModel:
     """Get LLM instance for the given task (cached per model+temperature)."""
     prefs = load_preferences()
-    api_keys = prefs.get("api_keys", {})
     model_name = model_override or prefs.get("default_models", {}).get(task, "claude-sonnet-4-20250514")
     temperature = _TASK_TEMPERATURES.get(task, 0.7)
 
@@ -51,7 +50,7 @@ def get_llm(task: str = "generation", model_override: Optional[str] = None) -> B
         return _llm_cache[cache_key]
 
     provider = _detect_provider(model_name)
-    api_key = api_keys.get(provider, "")
+    api_key = get_api_key(provider)
 
     if provider == "anthropic":
         llm = _get_anthropic(model_name, api_key, temperature)
@@ -106,16 +105,8 @@ def _get_google(model: str, api_key: str, temperature: float) -> BaseChatModel:
 
 def get_available_providers() -> list[str]:
     """Return list of providers with configured API keys."""
-    prefs = load_preferences()
-    keys = prefs.get("api_keys", {})
-    available = []
-    if keys.get("anthropic"):
-        available.append("anthropic")
-    if keys.get("openai"):
-        available.append("openai")
-    if keys.get("google"):
-        available.append("google")
-    return available
+    keys = get_all_api_keys()
+    return [p for p in keys if keys[p]]
 
 
 def get_provider_models() -> dict[str, list[str]]:
@@ -127,8 +118,7 @@ def get_provider_models() -> dict[str, list[str]]:
     if _models_cache is not None:
         return _models_cache
 
-    prefs = load_preferences()
-    api_keys = prefs.get("api_keys", {})
+    api_keys = get_all_api_keys()
     result: dict[str, list[str]] = {}
 
     # Anthropic — fetch from API

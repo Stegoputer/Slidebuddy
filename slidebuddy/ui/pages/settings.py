@@ -3,10 +3,12 @@ import streamlit as st
 from slidebuddy.config.defaults import (
     LANGUAGES,
     TEXT_LENGTHS,
+    get_all_api_keys,
     get_available_template_types,
     get_template_labels,
     load_preferences,
     save_preferences,
+    set_api_key,
 )
 from slidebuddy.llm.prompt_assembler import PROMPT_PHASES, get_default_prompt_text
 from slidebuddy.llm.router import clear_llm_cache, clear_models_cache, get_provider_models
@@ -51,9 +53,9 @@ def render_settings():
 
 def _render_api_keys(prefs: dict):
     st.subheader("API-Keys")
-    st.caption("Trage hier deine API-Keys fuer die verschiedenen LLM-Anbieter ein.")
+    st.caption("Keys werden sicher im Windows Credential Manager gespeichert.")
 
-    api_keys = prefs.get("api_keys", {})
+    api_keys = get_all_api_keys()
 
     # Status overview
     providers = [
@@ -89,15 +91,12 @@ def _render_api_keys(prefs: dict):
 
         st.markdown("")
         if st.form_submit_button("Speichern", use_container_width=True):
-            prefs["api_keys"] = {
-                "anthropic": anthropic_key,
-                "openai": openai_key,
-                "google": google_key,
-            }
-            save_preferences(prefs)
+            set_api_key("anthropic", anthropic_key)
+            set_api_key("openai", openai_key)
+            set_api_key("google", google_key)
             clear_llm_cache()
             clear_models_cache()
-            st.success("API-Keys gespeichert!")
+            st.success("API-Keys sicher im OS Keyring gespeichert!")
 
 
 # ---------------------------------------------------------------------------

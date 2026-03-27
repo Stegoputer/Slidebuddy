@@ -1,5 +1,7 @@
 """Shared component: display RAG chunks used for generation + manual chunk search."""
 
+import html as html_mod
+
 import streamlit as st
 
 from slidebuddy.rag.chroma_manager import get_project_sources_collection
@@ -21,7 +23,7 @@ def render_rag_chunks(source_chunks: list[dict], label: str = "Verwendete Quelle
                 st.caption(f"**{filename}** (Chunk {meta.get('chunk_index', '?')}){dist_label}")
                 # Show full text in small font
                 st.markdown(
-                    f"<div style='font-size:0.85em; max-height:200px; overflow-y:auto;'>{chunk['text']}</div>",
+                    f"<div style='font-size:0.85em; max-height:200px; overflow-y:auto;'>{html_mod.escape(chunk['text'])}</div>",
                     unsafe_allow_html=True,
                 )
 
@@ -146,9 +148,11 @@ def _render_chunk_results(chunks: list[dict], key_prefix: str, on_add=None):
             col_info, col_btn = st.columns([5, 1])
             with col_info:
                 st.caption(f"**{filename}** (Chunk {meta.get('chunk_index', '?')}){dist_label}")
+                safe_text = html_mod.escape(chunk['text'][:500])
+                ellipsis = "..." if len(chunk['text']) > 500 else ""
                 st.markdown(
                     f"<div style='font-size:0.85em; max-height:150px; overflow-y:auto;'>"
-                    f"{chunk['text'][:500]}{'...' if len(chunk['text']) > 500 else ''}"
+                    f"{safe_text}{ellipsis}"
                     f"</div>",
                     unsafe_allow_html=True,
                 )
