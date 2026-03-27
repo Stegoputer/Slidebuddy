@@ -8,8 +8,9 @@ REGELN:
 3. Keine inhaltlichen Wiederholungen zwischen Folien
 4. Nutze RAG-Quellen als Faktengrundlage wo passend
 5. Halte dich EXAKT an die JSON-Struktur des zugewiesenen Templates
-6. Sprechernotizen: ausformulierter Redetext, KEINE Begruessung/Willkommen, direkt starten
+6. KEINE Begruessung/Willkommen/Einleitung — weder in Folientext noch in Sprechernotizen. Starte DIREKT mit dem Inhalt. Vermeide Floskeln wie "Willkommen", "In diesem Kapitel", "Lassen Sie uns", "Heute schauen wir uns an".
 7. Generiere EXAKT so viele Folien wie angegeben
+8. Falls VORHERIGE KAPITEL angegeben sind: baue darauf auf, wiederhole nichts, schaffe Uebergaenge
 
 STIL:
 - Vollstaendige Saetze, keine reinen Stichworte

@@ -117,6 +117,7 @@ def generate_slides_batch(
     project_override: dict | None = None,
     batch_size: int = 4,
     on_progress: Callable | None = None,
+    previous_chapters: list[dict] | None = None,
 ) -> list[dict]:
     """Generate slides in batches — multiple slides per LLM call.
 
@@ -166,12 +167,22 @@ def generate_slides_batch(
             f"KAPITEL-ZUSAMMENFASSUNG: {chapter_context.get('summary', '')}",
         ]
 
+        # Context from previous chapters — enables cross-chapter coherence
+        if previous_chapters and batch_start == 0:
+            prev_ch_lines = []
+            for ch in previous_chapters[-3:]:  # Last 3 chapters max
+                ch_title = ch.get("title", "")
+                ch_summary = ch.get("summary", "")
+                prev_ch_lines.append(f"  - {ch_title}: {ch_summary}")
+            if prev_ch_lines:
+                user_parts.append("\nVORHERIGE KAPITEL (baue darauf auf, wiederhole nichts):\n" + "\n".join(prev_ch_lines))
+
         if all_results:
             prev_summaries = "\n".join(
                 f"Folie {r.get('slide_index', '?')}: {r.get('key_summary', '')}"
                 for r in all_results[-3:]
             )
-            user_parts.append(f"\nBISHERIGE FOLIEN:\n{prev_summaries}")
+            user_parts.append(f"\nBISHERIGE FOLIEN IN DIESEM KAPITEL:\n{prev_summaries}")
 
         if rag_text:
             user_parts.append(f"\nRELEVANTER QUELLEN-KONTEXT:\n{rag_text}")

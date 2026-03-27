@@ -249,6 +249,15 @@ def _generate_batch(project, chapter, chapter_idx, slide_plans, start_idx, text_
     def _on_progress(done, total):
         progress_bar.progress(done / total, text=f"{done}/{total} Folien fertig...")
 
+    # Collect previous chapter summaries for cross-chapter coherence
+    previous_chapters = []
+    if chapter_idx > 0:
+        conn = get_connection(DB_PATH)
+        all_chapters = get_chapters_for_project(conn, project.id)
+        conn.close()
+        for ch in all_chapters[:chapter_idx]:
+            previous_chapters.append({"title": ch.title, "summary": ch.summary or ""})
+
     try:
         results = generate_slides_batch(
             project_id=project.id,
@@ -259,6 +268,7 @@ def _generate_batch(project, chapter, chapter_idx, slide_plans, start_idx, text_
             project_override=project.parsed_override,
             batch_size=batch_size,
             on_progress=_on_progress,
+            previous_chapters=previous_chapters if previous_chapters else None,
         )
 
         for i, result in enumerate(results):
