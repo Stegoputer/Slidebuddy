@@ -90,17 +90,17 @@ def clear_models_cache():
 
 def _get_anthropic(model: str, api_key: str, temperature: float) -> BaseChatModel:
     from langchain_anthropic import ChatAnthropic
-    return ChatAnthropic(model=model, api_key=api_key, temperature=temperature, max_tokens=4096)
+    return ChatAnthropic(model=model, api_key=api_key, temperature=temperature, max_tokens=16000)
 
 
 def _get_openai(model: str, api_key: str, temperature: float) -> BaseChatModel:
     from langchain_openai import ChatOpenAI
-    return ChatOpenAI(model=model, api_key=api_key, temperature=temperature, max_tokens=4096)
+    return ChatOpenAI(model=model, api_key=api_key, temperature=temperature)
 
 
 def _get_google(model: str, api_key: str, temperature: float) -> BaseChatModel:
     from langchain_google_genai import ChatGoogleGenerativeAI
-    return ChatGoogleGenerativeAI(model=model, google_api_key=api_key, temperature=temperature, max_output_tokens=4096)
+    return ChatGoogleGenerativeAI(model=model, google_api_key=api_key, temperature=temperature)
 
 
 def get_available_providers() -> list[str]:

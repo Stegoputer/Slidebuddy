@@ -1,7 +1,15 @@
+import logging
 import streamlit as st
 from pathlib import Path
 from slidebuddy.config.defaults import DB_PATH, DATA_DIR
 from slidebuddy.db.migrations import init_db
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)-8s] %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+    force=True,
+)
 
 
 @st.cache_resource

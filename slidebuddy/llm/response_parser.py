@@ -47,6 +47,17 @@ def parse_llm_json(content: str, required_fields: list[str] | None = None) -> di
     if isinstance(result, list):
         result = {"slides": result}
 
+    # If we got a single slide dict (no "slides" key but has slide-like fields),
+    # wrap it — happens when LLM generates exactly 1 slide and skips the array
+    if (
+        isinstance(result, dict)
+        and "slides" not in result
+        and "title" in result
+        and "content" in result
+    ):
+        logger.warning("LLM returned single slide dict instead of slides array — wrapping.")
+        result = {"slides": [result]}
+
     if required_fields:
         for field in required_fields:
             if field not in result:

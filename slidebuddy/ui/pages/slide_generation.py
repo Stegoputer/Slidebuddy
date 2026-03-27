@@ -1,7 +1,10 @@
 """Phase 3: Slide generation UI — batch generation with single-slide option."""
 
 import json
+import threading
 import time
+
+from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
 
 import streamlit as st
 
@@ -88,6 +91,21 @@ def render_slide_generation():
     if "section_plans" not in st.session_state or not st.session_state.section_plans:
         _load_section_plans_from_db(conn, project_id)
     _mark("6_load_section_plans")
+
+    # Background batch generation: save results when thread finishes
+    _flush_batch_results()
+
+    # Thread-Check: Flag zurücksetzen wenn Thread beendet ist aber Flag noch True (Crash / Navigation)
+    if st.session_state.get("_batch_running"):
+        thread = st.session_state.get("_batch_thread")
+        if thread is not None and not thread.is_alive():
+            st.session_state["_batch_running"] = False
+
+    # While batch is running: show only the progress fragment (no full-page rerun → kein Blinken)
+    if st.session_state.get("_batch_running"):
+        _render_batch_progress()
+        conn.close()
+        return
 
     section_plans = st.session_state.get("section_plans", {})
 
@@ -241,15 +259,16 @@ def _generate_next_slide(project, chapter, chapter_idx, slide_plans, slide_idx, 
 
 
 def _generate_batch(project, chapter, chapter_idx, slide_plans, start_idx, text_length):
+    """Start batch generation in a background thread — non-blocking."""
+    if st.session_state.get("_batch_running"):
+        st.warning("Es läuft bereits eine Batch-Generierung.")
+        return
+
     remaining_plans = slide_plans[start_idx:]
     prefs = load_preferences()
     batch_size = prefs.get("batch_size", 4)
-    progress_bar = st.progress(0, text="Generiere Folien als Batch...")
 
-    def _on_progress(done, total):
-        progress_bar.progress(done / total, text=f"{done}/{total} Folien fertig...")
-
-    # Collect previous chapter summaries for cross-chapter coherence
+    # Collect previous chapter summaries
     previous_chapters = []
     if chapter_idx > 0:
         conn = get_connection(DB_PATH)
@@ -258,27 +277,82 @@ def _generate_batch(project, chapter, chapter_idx, slide_plans, start_idx, text_
         for ch in all_chapters[:chapter_idx]:
             previous_chapters.append({"title": ch.title, "summary": ch.summary or ""})
 
-    try:
-        results = generate_slides_batch(
-            project_id=project.id,
-            slide_plans=remaining_plans,
-            chapter_context={"title": chapter.title, "summary": chapter.summary},
-            language=project.language,
-            text_length=text_length,
-            project_override=project.parsed_override,
-            batch_size=batch_size,
-            on_progress=_on_progress,
-            previous_chapters=previous_chapters if previous_chapters else None,
-        )
+    st.session_state["_batch_running"] = True
+    st.session_state["_batch_progress"] = (0, len(remaining_plans))
+    st.session_state["_batch_error"] = None
+    st.session_state["_batch_meta"] = {
+        "chapter_idx": chapter_idx,
+        "start_idx": start_idx,
+        "slide_plans": slide_plans,
+    }
 
-        for i, result in enumerate(results):
-            slide_idx = start_idx + i
-            global_idx = _calc_global_index(chapter_idx, slide_idx)
-            _store_slide_result(chapter_idx, slide_idx, global_idx, slide_plans[slide_idx], result)
+    def _run():
+        def _on_progress(done, total):
+            st.session_state["_batch_progress"] = (done, total)
 
-        st.rerun()
-    except Exception as e:
-        st.error(f"Fehler bei Batch-Generierung: {e}")
+        def _on_batch_done(batch_start, slides):
+            # Thread hat ScriptRunContext → direkt speichern, kein Umweg über pending-Liste
+            meta = st.session_state.get("_batch_meta", {})
+            ch_idx = meta.get("chapter_idx", 0)
+            s_idx = meta.get("start_idx", 0)
+            plans = meta.get("slide_plans", [])
+            for i, result in enumerate(slides):
+                slide_idx = s_idx + batch_start + i
+                _store_slide_result(ch_idx, slide_idx, _calc_global_index(ch_idx, slide_idx), plans[slide_idx], result)
+
+        try:
+            generate_slides_batch(
+                project_id=project.id,
+                slide_plans=remaining_plans,
+                chapter_context={"title": chapter.title, "summary": chapter.summary},
+                language=project.language,
+                text_length=text_length,
+                project_override=project.parsed_override,
+                batch_size=batch_size,
+                on_progress=_on_progress,
+                on_batch_done=_on_batch_done,
+                previous_chapters=previous_chapters if previous_chapters else None,
+            )
+        except Exception as e:
+            st.session_state["_batch_error"] = str(e)
+        finally:
+            st.session_state["_batch_running"] = False
+
+    thread = threading.Thread(target=_run, daemon=True)
+    add_script_run_ctx(thread, get_script_run_ctx())  # erlaubt session_state-Zugriff im Thread
+    st.session_state["_batch_thread"] = thread
+    thread.start()
+    st.rerun()
+
+
+@st.fragment(run_every=2)
+def _render_batch_progress():
+    """Fragment das alle 2s auto-rerunt — speichert fertige Sub-Batches und zeigt Fortschritt."""
+    # Fertige Sub-Batches sofort speichern (auch während Batch noch läuft)
+    _flush_batch_results()
+
+    if not st.session_state.get("_batch_running"):
+        return  # _flush_batch_results hat bereits st.rerun() aufgerufen
+    done, total = st.session_state.get("_batch_progress", (0, 0))
+    st.progress(done / max(total, 1), text=f"⏳ {done} / {total} Folien generiert")
+    st.info("Die Generierung läuft im Hintergrund. Du kannst währenddessen andere Seiten besuchen.")
+
+
+def _flush_batch_results():
+    """Cleanup nach Batch-Abschluss. Slides wurden bereits direkt im Thread gespeichert."""
+    if st.session_state.get("_batch_running"):
+        return
+
+    if not st.session_state.get("_batch_meta"):
+        return
+
+    error = st.session_state.pop("_batch_error", None)
+    if error:
+        st.error(f"Fehler bei Batch-Generierung: {error}")
+
+    st.session_state.pop("_batch_meta", None)
+    st.session_state.pop("_batch_thread", None)
+    st.rerun()
 
 
 # ---------------------------------------------------------------------------
@@ -423,41 +497,41 @@ def _save_chapter_slides(project, chapter, chapter_idx, conn):
 def _render_completion(project, chapters, conn):
     st.success("Alle Kapitel wurden generiert und freigegeben!")
 
-    col1, col2, col3, col4 = st.columns(4)
+    gen_slides = st.session_state.get("gen_slides", {})
+
+    col1, col2 = st.columns(2)
     with col1:
-        if st.button("Weiter zum Review & Export", type="primary", use_container_width=True):
-            st.session_state.current_page = "review"
-            st.rerun()
+        if any(gen_slides.values()):
+            txt = export_gen_slides_txt(project.name, gen_slides, chapters)
+            st.download_button(
+                "📄 Als TXT herunterladen",
+                data=txt,
+                file_name=f"{project.name.replace(' ', '_')}_slides.txt",
+                mime="text/plain",
+                use_container_width=True,
+                key="txt_dl_completion",
+            )
     with col2:
-        if st.button("Zurueck zur Kapiteluebersicht", use_container_width=True):
-            st.session_state.gen_chapter_idx = 0
-            st.session_state.gen_all_done = False
-            st.rerun()
-    with col3:
-        _render_txt_download(project, chapters, key="txt_dl_completion")
-    with col4:
         _render_pptx_download(project, chapters, key="pptx_dl_completion")
 
+    st.divider()
 
-def _render_txt_download(project, chapters, key: str = "txt_dl"):
-    """Render a download button for TXT export — built lazily on first click."""
-    gen_slides = st.session_state.get("gen_slides", {})
-    if not gen_slides:
-        return
-    # Only build export when cached or after user triggers it
-    if "_txt_cache" in st.session_state:
-        st.download_button(
-            "Als TXT herunterladen",
-            data=st.session_state._txt_cache,
-            file_name=f"{project.name.replace(' ', '_')}_slides.txt",
-            mime="text/plain",
-            use_container_width=True,
-            key=key,
-        )
-    else:
-        if st.button("TXT Export vorbereiten", use_container_width=True, key=key):
-            st.session_state._txt_cache = export_gen_slides_txt(project.name, gen_slides, chapters)
-            st.rerun()
+    for i, chapter in enumerate(chapters):
+        slides = gen_slides.get(i, [])
+        if not slides:
+            continue
+        with st.expander(f"Kapitel {i + 1}: {chapter.title} ({len(slides)} Folien)", expanded=True):
+            for j, slide_data in enumerate(slides):
+                def _on_save(updated, _i=i, _j=j):
+                    st.session_state.gen_slides[_i][_j] = updated
+                    _save_gen_slides_draft(_i)
+
+                render_slide_card(
+                    slide_data,
+                    show_cot=False,
+                    edit_key=f"comp_{i}_{j}",
+                    on_save=_on_save,
+                )
 
 
 def _render_pptx_download(project, chapters, key: str = "pptx_dl"):
@@ -467,7 +541,7 @@ def _render_pptx_download(project, chapters, key: str = "pptx_dl"):
         return
     if "_pptx_cache" in st.session_state and st.session_state._pptx_cache is not None:
         st.download_button(
-            "Als PPTX herunterladen",
+            "📊 Als PPTX herunterladen",
             data=st.session_state._pptx_cache,
             file_name=f"{project.name.replace(' ', '_')}_slides.pptx",
             mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -475,7 +549,7 @@ def _render_pptx_download(project, chapters, key: str = "pptx_dl"):
             key=key,
         )
     else:
-        if st.button("PPTX Export vorbereiten", use_container_width=True, key=key):
+        if st.button("📊 PPTX Export vorbereiten", use_container_width=True, key=key):
             with st.spinner("PPTX wird erstellt..."):
                 try:
                     st.session_state._pptx_cache = export_pptx(project.name, gen_slides, chapters)

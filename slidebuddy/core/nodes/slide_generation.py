@@ -100,7 +100,13 @@ def generate_slide(
         chunks=source_chunks,
     )
 
-    result = parse_llm_json(response.content, required_fields=["title", "content", "speaker_notes"])
+    result = parse_llm_json(response.content)
+    # LLM sometimes wraps single slide in {"slides": [...]} — unwrap it
+    if "slides" in result and isinstance(result.get("slides"), list) and result["slides"] and "title" not in result:
+        result = result["slides"][0]
+    for field in ("title", "content", "speaker_notes"):
+        if field not in result:
+            raise ValueError(f"LLM-Antwort fehlt Feld '{field}'.")
     result.setdefault("subtitle", None)
     result.setdefault("chain_of_thought", "")
     result.setdefault("key_summary", result["title"])
@@ -118,6 +124,7 @@ def generate_slides_batch(
     batch_size: int = 4,
     on_progress: Callable | None = None,
     previous_chapters: list[dict] | None = None,
+    on_batch_done: Callable | None = None,
 ) -> list[dict]:
     """Generate slides in batches — multiple slides per LLM call.
 
@@ -128,9 +135,15 @@ def generate_slides_batch(
     llm = get_llm("generation")
     rag = load_preferences().get("rag", {})
 
+    logger.info("Batch-Generierung gestartet: %d Folien, Batch-Größe %d → %d Batches",
+                total, batch_size, -(-total // batch_size))
+
     for batch_start in range(0, total, batch_size):
         batch_end = min(batch_start + batch_size, total)
         batch_plans = slide_plans[batch_start:batch_end]
+        logger.info("Batch %d/%d — Folien %d-%d werden generiert ...",
+                    batch_start // batch_size + 1, -(-total // batch_size),
+                    batch_start + 1, batch_end)
 
         # Only include templates used in THIS batch — not all 19
         batch_template_types = [p.get("template_type", "numbered") for p in batch_plans]
@@ -206,23 +219,55 @@ def generate_slides_batch(
         user_prompt = "\n".join(user_parts)
 
         import time as _t
-        _start = _t.perf_counter()
-        response = llm.invoke([
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_prompt),
-        ])
-        _dur = _t.perf_counter() - _start
-
         from slidebuddy.llm.prompt_logger import log_llm_call
-        log_llm_call(
-            f"slide_generation_batch_{batch_start+1}-{batch_end}",
-            system_prompt, user_prompt, response.content, _dur,
-            chunks=source_chunks,
-            metadata={"batch_size": len(batch_plans), "batch_start": batch_start + 1, "batch_end": batch_end},
-        )
 
-        batch_result = parse_llm_json(response.content, required_fields=["slides"])
-        slides = batch_result["slides"]
+        _start = _t.perf_counter()
+        try:
+            response = llm.invoke([
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt),
+            ])
+            _dur = _t.perf_counter() - _start
+            log_llm_call(
+                f"slide_generation_batch_{batch_start+1}-{batch_end}",
+                system_prompt, user_prompt, response.content, _dur,
+                chunks=source_chunks,
+                metadata={"batch_size": len(batch_plans), "batch_start": batch_start + 1, "batch_end": batch_end},
+            )
+            batch_result = parse_llm_json(response.content, required_fields=["slides"])
+            slides = batch_result["slides"]
+        except Exception as batch_err:
+            # LLM-Fehler oder JSON-Parse-Fehler — Einzelgenerierung als Fallback
+            logger.warning(
+                "Batch %d-%d fehlgeschlagen (%s) — Einzelgenerierung als Fallback.",
+                batch_start + 1, batch_end, batch_err,
+            )
+            slides = []
+            for i, plan in enumerate(batch_plans):
+                try:
+                    single = generate_slide(
+                        project_id=project_id,
+                        slide_plan=plan,
+                        chapter_context=chapter_context,
+                        language=language,
+                        text_length=text_length,
+                        slide_index=batch_start + i + 1,
+                        total_slides_in_chapter=total,
+                        project_override=project_override,
+                        extra_chunks=plan.get("chunks"),
+                    )
+                    slides.append(single)
+                except Exception as slide_err:
+                    logger.error("Einzelgenerierung Folie %d fehlgeschlagen: %s", batch_start + i + 1, slide_err)
+                    slides.append({
+                        "title": plan.get("brief", f"Folie {batch_start + i + 1}"),
+                        "content": {},
+                        "speaker_notes": "",
+                        "subtitle": None,
+                        "chain_of_thought": "",
+                        "key_summary": "",
+                        "_generation_error": str(slide_err),
+                    })
 
         for i, slide in enumerate(slides):
             slide.setdefault("subtitle", None)
@@ -231,9 +276,15 @@ def generate_slides_batch(
             slide["slide_index"] = batch_start + i + 1
             all_results.append(slide)
 
+        titles = [s.get("title", "?")[:50] for s in slides]
+        logger.info("Batch %d-%d fertig: %s", batch_start + 1, batch_end, " | ".join(titles))
+
+        if on_batch_done:
+            on_batch_done(batch_start, slides)
         if on_progress:
             on_progress(batch_end, total)
 
+    logger.info("Batch-Generierung abgeschlossen: %d Folien generiert.", len(all_results))
     return all_results
 
 

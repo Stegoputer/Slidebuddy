@@ -70,12 +70,19 @@ section[data-testid="stSidebar"] .stButton > button {
     background: var(--bg-card) !important;
     border: 1px solid var(--border-subtle) !important;
     box-shadow: none !important;
+    font-size: 0.875rem !important;
+    font-weight: 500 !important;
+    padding: 8px 12px !important;
+    text-align: left !important;
+    min-height: 38px !important;
+    transform: none !important;
 }
 
 section[data-testid="stSidebar"] .stButton > button:hover {
     background: var(--bg-card-hover) !important;
     border-color: var(--accent) !important;
     box-shadow: 0 2px 12px var(--accent-glow) !important;
+    transform: none !important;
 }
 
 /* ===== CONTAINERS / CARDS ===== */

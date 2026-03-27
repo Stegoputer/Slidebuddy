@@ -130,6 +130,9 @@ def render_section_planning():
             st.session_state.current_page = "slide_generation"
             st.rerun()
 
+    st.divider()
+    _render_replan_section_button(project_id, conn)
+
     conn.close()
 
 
@@ -175,6 +178,49 @@ def _delete_all_section_plans(conn, project_id: str):
         (project_id, f"{_SECTION_VERSION_PREFIX}_%"),
     )
     conn.commit()
+
+
+def _delete_section_data(project_id: str, conn):
+    """Delete all section plans and any subsequent generation data."""
+    _delete_all_section_plans(conn, project_id)
+    delete_steps_after(conn, project_id, "sections")
+    st.session_state.section_plans = {}
+    st.session_state.sections_approved = False
+    st.session_state.pop("gen_slides", None)
+    st.session_state.pop("gen_chapter_idx", None)
+    st.session_state.pop("gen_all_done", None)
+    st.session_state.pop(f"_stepbar_max_{project_id}", None)
+
+
+def _render_replan_section_button(project_id: str, conn):
+    """Show 'Sektionsplanung neu starten' with a warning if generation data exists."""
+    confirm_key = "_sec_replan_confirm"
+    max_step = detect_project_step(conn, project_id)
+    has_generation = get_step_index(max_step) > get_step_index("sections")
+
+    if st.session_state.get(confirm_key):
+        st.warning(
+            "Sektionsplanung neu starten? Alle Sektionspläne und generierte Folien "
+            "werden dabei gelöscht."
+        )
+        col_yes, col_no, _ = st.columns([1, 1, 4])
+        with col_yes:
+            if st.button("Ja, neu starten", type="primary", key="sec_replan_yes"):
+                _delete_section_data(project_id, conn)
+                st.session_state.pop(confirm_key, None)
+                st.rerun()
+        with col_no:
+            if st.button("Abbrechen", key="sec_replan_no"):
+                st.session_state.pop(confirm_key, None)
+                st.rerun()
+    else:
+        if st.button("🔄 Sektionsplanung neu starten"):
+            if has_generation:
+                st.session_state[confirm_key] = True
+                st.rerun()
+            else:
+                _delete_section_data(project_id, conn)
+                st.rerun()
 
 
 # ---------------------------------------------------------------------------

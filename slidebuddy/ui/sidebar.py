@@ -43,7 +43,7 @@ def render_sidebar():
         st.divider()
 
         # Project list
-        st.subheader("Projekte")
+        st.caption("PROJEKTE")
         try:
             projects = _load_projects()
 

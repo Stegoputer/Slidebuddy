@@ -1,39 +1,107 @@
-import streamlit as st
 import json
 
+import streamlit as st
 
-def render_slide_card(slide: dict, show_cot: bool = True):
-    """Render a single slide as a card."""
+
+def render_slide_card(
+    slide: dict,
+    show_cot: bool = True,
+    edit_key: str | None = None,
+    on_save=None,
+):
+    """Render a single slide as a card.
+
+    edit_key: if provided, shows an edit toggle button. Requires on_save callback.
+    on_save: callable(updated_slide) — called when user saves edits.
+    """
     template_label = slide.get("template_type", "").replace("_", " ").title()
     reuse_marker = " ♻️" if slide.get("is_reused") else ""
+    is_editing = edit_key and st.session_state.get(f"_edit_open_{edit_key}", False)
 
     with st.container(border=True):
-        st.markdown(f"**Slide {slide.get('slide_index', '?')}: {slide.get('title', 'Ohne Titel')}** — {template_label}{reuse_marker}")
+        if edit_key:
+            header_col, btn_col = st.columns([8, 1])
+            with header_col:
+                st.markdown(
+                    f"**Slide {slide.get('slide_index', '?')}: {slide.get('title', 'Ohne Titel')}**"
+                    f" — {template_label}{reuse_marker}"
+                )
+            with btn_col:
+                label = "✕" if is_editing else "✏️"
+                if st.button(label, key=f"_edit_toggle_{edit_key}"):
+                    st.session_state[f"_edit_open_{edit_key}"] = not is_editing
+                    st.rerun()
+        else:
+            st.markdown(
+                f"**Slide {slide.get('slide_index', '?')}: {slide.get('title', 'Ohne Titel')}**"
+                f" — {template_label}{reuse_marker}"
+            )
 
-        if slide.get("subtitle"):
-            st.caption(slide["subtitle"])
+        if is_editing:
+            _render_slide_edit(slide, edit_key, on_save)
+        else:
+            _render_slide_display(slide, show_cot)
 
-        # Content — handle both "content" (from generation) and "content_json" (from DB)
-        raw_content = slide.get("content") or slide.get("content_json")
-        if raw_content:
-            try:
-                content = json.loads(raw_content) if isinstance(raw_content, str) else raw_content
-                if isinstance(content, dict):
-                    _render_content(content, slide.get("template_type", ""))
-                else:
-                    st.text(str(content))
-            except (json.JSONDecodeError, TypeError):
-                st.text(str(raw_content))
 
-        # Speaker notes
-        if slide.get("speaker_notes"):
-            with st.expander("Sprechernotizen"):
-                st.markdown(slide["speaker_notes"])
+def _render_slide_display(slide: dict, show_cot: bool):
+    if slide.get("subtitle"):
+        st.caption(slide["subtitle"])
 
-        # Chain of thought
-        if show_cot and slide.get("chain_of_thought"):
-            with st.expander("Chain of Thought"):
-                st.markdown(slide["chain_of_thought"])
+    raw_content = slide.get("content") or slide.get("content_json")
+    if raw_content:
+        try:
+            content = json.loads(raw_content) if isinstance(raw_content, str) else raw_content
+            if isinstance(content, dict):
+                _render_content(content, slide.get("template_type", ""))
+            else:
+                st.text(str(content))
+        except (json.JSONDecodeError, TypeError):
+            st.text(str(raw_content))
+
+    if slide.get("speaker_notes"):
+        with st.expander("Sprechernotizen"):
+            st.markdown(slide["speaker_notes"])
+
+    if show_cot and slide.get("chain_of_thought"):
+        with st.expander("Chain of Thought"):
+            st.markdown(slide["chain_of_thought"])
+
+
+def _render_slide_edit(slide: dict, edit_key: str, on_save):
+    """Inline edit form for a slide."""
+    new_title = st.text_input("Titel", value=slide.get("title", ""), key=f"_e_title_{edit_key}")
+    new_subtitle = st.text_input("Untertitel", value=slide.get("subtitle") or "", key=f"_e_sub_{edit_key}")
+
+    raw = slide.get("content") or slide.get("content_json") or {}
+    content_str = json.dumps(raw, ensure_ascii=False, indent=2) if isinstance(raw, dict) else (raw or "{}")
+    new_content_str = st.text_area(
+        "Inhalt (JSON)", value=content_str, height=220, key=f"_e_content_{edit_key}"
+    )
+
+    new_notes = st.text_area(
+        "Sprechernotizen", value=slide.get("speaker_notes", ""), height=100, key=f"_e_notes_{edit_key}"
+    )
+
+    if st.button("💾 Speichern", key=f"_e_save_{edit_key}", type="primary"):
+        try:
+            new_content = json.loads(new_content_str)
+        except json.JSONDecodeError:
+            st.error("Ungültiges JSON im Inhalt — bitte korrigieren.")
+            return
+
+        updated = {
+            **slide,
+            "title": new_title,
+            "subtitle": new_subtitle or None,
+            "content": new_content,
+            "speaker_notes": new_notes,
+        }
+        updated.pop("content_json", None)
+
+        if on_save:
+            on_save(updated)
+        st.session_state[f"_edit_open_{edit_key}"] = False
+        st.rerun()
 
 
 def _render_content(content: dict, template_type: str):
@@ -92,7 +160,6 @@ def _render_content(content: dict, template_type: str):
         st.markdown(f"> *{content.get('text', '')}*")
 
     else:
-        # Dynamic fallback for master templates and unknown types
         _render_generic_content(content)
 
 
@@ -100,23 +167,21 @@ def _render_generic_content(content: dict):
     """Render content generically — works for any template structure."""
     for key, value in content.items():
         if isinstance(value, str) and value.strip():
-            # Simple text field
             label = key.replace("_", " ").replace("placeholder", "").strip().title()
             st.markdown(f"**{label}:** {value}")
         elif isinstance(value, list):
-            # List of items
             for item in value:
                 if isinstance(item, dict):
-                    parts = []
-                    for k, v in item.items():
-                        if isinstance(v, str) and v.strip():
-                            parts.append(f"**{k}**: {v}")
+                    parts = [
+                        f"**{k}**: {v}"
+                        for k, v in item.items()
+                        if isinstance(v, str) and v.strip()
+                    ]
                     if parts:
                         st.markdown(" | ".join(parts))
                 elif isinstance(item, str):
                     st.markdown(f"- {item}")
         elif isinstance(value, dict):
-            # Nested dict
             label = key.replace("_", " ").title()
             st.markdown(f"**{label}:**")
             for k, v in value.items():

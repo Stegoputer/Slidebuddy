@@ -1,18 +1,17 @@
-"""Phase 4: Review & Export — view all generated slides and export as TXT."""
+"""Phase 4: Review & Export — view all generated slides and export as TXT or PPTX."""
 
 import streamlit as st
 
 from slidebuddy.config.defaults import DB_PATH
 from slidebuddy.db.migrations import get_connection
-from slidebuddy.db.queries import (
-    get_chapters_for_project,
-    get_project,
-    get_slides_for_project,
-)
+from slidebuddy.db.queries import get_chapters_for_project, get_project
+from slidebuddy.db.helpers import load_versioned_states
 from slidebuddy.export.pptx_exporter import export_pptx
-from slidebuddy.export.txt_exporter import export_gen_slides_txt, export_txt
+from slidebuddy.export.txt_exporter import export_gen_slides_txt
 from slidebuddy.ui.components.slide_card import render_slide_card
 from slidebuddy.ui.components.stepbar import render_stepbar
+
+_GEN_DRAFT_PREFIX = "gen_slides_"
 
 
 def render_review():
@@ -32,72 +31,86 @@ def render_review():
     render_stepbar(conn, project_id, "generation")
 
     chapters = get_chapters_for_project(conn, project_id)
-    slides_db = get_slides_for_project(conn, project_id)
 
-    # Also check gen_slides drafts (not yet approved)
+    # Load gen_slides from session state or DB
+    if "gen_slides" not in st.session_state or not st.session_state.gen_slides:
+        st.session_state.gen_slides = load_versioned_states(conn, project_id, _GEN_DRAFT_PREFIX)
+    conn.close()
+
     gen_slides = st.session_state.get("gen_slides", {})
-
-    if not slides_db and not any(gen_slides.values()):
+    if not any(gen_slides.values()):
         st.info("Noch keine Folien generiert.")
-        conn.close()
         return
 
     # Export buttons
     st.subheader("Export")
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     with col1:
-        if slides_db:
-            txt = export_txt(project.name, chapters, slides_db)
-            st.download_button(
-                "Freigegebene als TXT",
-                data=txt,
-                file_name=f"{project.name.replace(' ', '_')}_final.txt",
-                mime="text/plain",
-                use_container_width=True,
-            )
+        txt = export_gen_slides_txt(project.name, gen_slides, chapters)
+        st.download_button(
+            "📄 Als TXT herunterladen",
+            data=txt,
+            file_name=f"{project.name.replace(' ', '_')}_slides.txt",
+            mime="text/plain",
+            use_container_width=True,
+        )
     with col2:
-        if any(gen_slides.values()):
-            txt = export_gen_slides_txt(project.name, gen_slides, chapters)
-            st.download_button(
-                "Entwuerfe als TXT",
-                data=txt,
-                file_name=f"{project.name.replace(' ', '_')}_draft.txt",
-                mime="text/plain",
-                use_container_width=True,
-            )
-    with col3:
-        if gen_slides and any(gen_slides.values()):
-            try:
-                pptx_bytes = export_pptx(project.name, gen_slides, chapters)
-                st.download_button(
-                    "Als PPTX herunterladen",
-                    data=pptx_bytes,
-                    file_name=f"{project.name.replace(' ', '_')}.pptx",
-                    mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                    use_container_width=True,
-                )
-            except Exception as e:
-                st.error(f"PPTX-Export fehlgeschlagen: {e}")
+        _render_pptx_download(project, chapters)
 
     st.divider()
 
-    # Show all slides grouped by chapter
-    if slides_db:
-        st.subheader("Freigegebene Folien")
-        for chapter in chapters:
-            ch_slides = [s for s in slides_db if s.chapter_id == chapter.id]
-            if ch_slides:
-                with st.expander(f"Kapitel {chapter.chapter_index + 1}: {chapter.title} ({len(ch_slides)} Folien)", expanded=True):
-                    for slide in ch_slides:
-                        render_slide_card({
-                            "slide_index": slide.slide_index,
-                            "title": slide.title,
-                            "subtitle": slide.subtitle,
-                            "template_type": slide.template_type,
-                            "content_json": slide.content_json,
-                            "speaker_notes": slide.speaker_notes,
-                            "chain_of_thought": slide.chain_of_thought,
-                            "is_reused": slide.is_reused,
-                        }, show_cot=False)
+    # Show all slides grouped by chapter, editable
+    st.subheader("Folien")
+    for i, chapter in enumerate(chapters):
+        slides = gen_slides.get(i, [])
+        if not slides:
+            continue
+        with st.expander(
+            f"Kapitel {i + 1}: {chapter.title} ({len(slides)} Folien)", expanded=True
+        ):
+            for j, slide_data in enumerate(slides):
+                def _on_save(updated, _i=i, _j=j):
+                    st.session_state.gen_slides[_i][_j] = updated
+                    _save_gen_slides_draft(_i, project.id)
 
+                render_slide_card(
+                    slide_data,
+                    show_cot=False,
+                    edit_key=f"review_{i}_{j}",
+                    on_save=_on_save,
+                )
+
+
+def _render_pptx_download(project, chapters):
+    """Lazily build and offer PPTX download."""
+    gen_slides = st.session_state.get("gen_slides", {})
+    if not any(gen_slides.values()):
+        return
+
+    if st.session_state.get("_pptx_cache_review"):
+        st.download_button(
+            "📊 Als PPTX herunterladen",
+            data=st.session_state._pptx_cache_review,
+            file_name=f"{project.name.replace(' ', '_')}_slides.pptx",
+            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            use_container_width=True,
+            key="pptx_dl_review",
+        )
+    else:
+        if st.button("📊 PPTX Export vorbereiten", use_container_width=True, key="pptx_prepare_review"):
+            with st.spinner("PPTX wird erstellt..."):
+                try:
+                    st.session_state._pptx_cache_review = export_pptx(project.name, gen_slides, chapters)
+                except Exception as e:
+                    st.error(f"PPTX-Export fehlgeschlagen: {e}")
+                    return
+            st.rerun()
+
+
+def _save_gen_slides_draft(chapter_idx: int, project_id: str):
+    """Persist edited slides back to the versions table."""
+    from slidebuddy.db.helpers import save_versioned_state
+    slides = st.session_state.gen_slides.get(chapter_idx, [])
+    conn = get_connection(DB_PATH)
+    save_versioned_state(conn, project_id, f"{_GEN_DRAFT_PREFIX}{chapter_idx}", chapter_idx, slides)
     conn.close()

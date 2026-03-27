@@ -377,7 +377,7 @@ def _render_replan_button(project, conn):
                 delete_steps_after(conn, project.id, "chapters")
                 # Also delete chapters themselves from DB so _load_plan_from_db won't reload them
                 _delete_chapter_data(conn, project.id)
-                _do_replan()
+                _do_replan(project.id)
                 st.session_state.pop(confirm_key, None)
                 st.rerun()
         with col_no:
@@ -391,7 +391,7 @@ def _render_replan_button(project, conn):
                 st.rerun()
             else:
                 _delete_chapter_data(conn, project.id)
-                _do_replan()
+                _do_replan(project.id)
                 st.rerun()
 
 
@@ -406,7 +406,7 @@ def _delete_chapter_data(conn, project_id: str):
     conn.commit()
 
 
-def _do_replan():
+def _do_replan(project_id: str = ""):
     """Reset chapter plan state for re-planning."""
     st.session_state.chapter_plan = None
     st.session_state.chapter_plan_approved = False
@@ -415,6 +415,8 @@ def _do_replan():
     st.session_state.pop("gen_slides", None)
     st.session_state.pop("gen_chapter_idx", None)
     st.session_state.pop("gen_all_done", None)
+    if project_id:
+        st.session_state.pop(f"_stepbar_max_{project_id}", None)
 
 
 # ---------------------------------------------------------------------------
