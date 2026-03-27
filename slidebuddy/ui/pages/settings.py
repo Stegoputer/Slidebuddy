@@ -266,7 +266,7 @@ def _render_rag_settings(prefs: dict):
     rag = prefs.get("rag", {})
 
     # Overview metrics
-    st.subheader("RAG & Retrieval")
+    st.subheader("RAG")
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Chunks Planung", rag.get("n_sources_planning", 5))
     m2.metric("Chunks Generierung", rag.get("n_sources_generation", 3))
