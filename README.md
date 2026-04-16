@@ -40,8 +40,7 @@ cd Slidebuddy
 **Windows:**
 ```bash
 py -m venv .venv
-.venv\Scripts\activate
-py -m pip install -r requirements.txt
+.venv\Scripts\pip install -r requirements.txt
 ```
 
 **macOS/Linux:**
@@ -61,17 +60,17 @@ cd ..
 
 ### 4. App starten
 
-**Windows (empfohlen):** Doppelklick auf `start.bat` im Projektordner.
+**Windows (empfohlen):** Doppelklick auf `start.bat` im Projektordner. Es öffnen sich zwei Terminalfenster — eines für das Backend (Port 8000), eines für das Frontend (Port 3000).
 
 Oder manuell — zwei Terminals öffnen:
 
 Terminal 1 (Backend):
 ```bash
 # Windows
-py -m uvicorn slidebuddy.api.app:app --port 8000 --reload --reload-dir slidebuddy
+.venv\Scripts\python.exe -m uvicorn slidebuddy.api.app:app --port 8000 --reload --reload-dir slidebuddy
 
 # macOS/Linux
-python -m uvicorn slidebuddy.api.app:app --port 8000 --reload --reload-dir slidebuddy
+.venv/bin/python -m uvicorn slidebuddy.api.app:app --port 8000 --reload --reload-dir slidebuddy
 ```
 
 Terminal 2 (Frontend):
@@ -104,6 +103,15 @@ Schließe das Terminal komplett und öffne ein neues Fenster.
 ```powershell
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
+
+**Backend startet nicht / `No module named uvicorn`:**
+Die Python-Pakete wurden nicht in der virtuellen Umgebung installiert. Führe im Projektordner aus:
+```bash
+.venv\Scripts\pip install -r requirements.txt
+```
+
+**Frontend zeigt `ECONNREFUSED` auf Port 8000:**
+Das Backend-Fenster wurde geschlossen oder ist nicht gestartet. `start.bat` erneut ausführen und sicherstellen, dass beide Fenster (API + Web) offen bleiben.
 
 ---
 

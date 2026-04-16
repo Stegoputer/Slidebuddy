@@ -1,6 +1,6 @@
 @echo off
 cd /d "%~dp0"
-start "SlideBuddy API" cmd /k "python -m uvicorn slidebuddy.api.app:app --port 8000 --reload"
+start "SlideBuddy API" cmd /k ".venv\Scripts\python.exe -m uvicorn slidebuddy.api.app:app --port 8000 --reload --reload-dir slidebuddy"
 cd frontend
 start "SlideBuddy Web" cmd /k "npx next dev"
 echo.
