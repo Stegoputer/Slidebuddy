@@ -19,55 +19,106 @@ KI-gestützte Präsentationserstellung aus eigenen Quellen. Lade Dokumente hoch 
 
 ## Voraussetzungen
 
-- Python 3.11+
-- Node.js 18+
+- Python 3.11+ → https://www.python.org/downloads/ (**"Add python.exe to PATH" ankreuzen!**)
+- Node.js 18+ → https://nodejs.org (LTS-Version)
+- Git → https://git-scm.com/download/win
 - API-Key für mindestens einen LLM-Anbieter (Anthropic, OpenAI oder Google)
+
+> **Wichtig nach der Installation:** Öffne ein neues Terminal-Fenster, damit die Programme erkannt werden.
 
 ## Installation
 
-### 1. Repository klonen & Python-Umgebung einrichten
+### 1. Repository klonen
 
 ```bash
 git clone https://github.com/Stegoputer/Slidebuddy.git
 cd Slidebuddy
+```
 
-python -m venv .venv
+### 2. Python-Umgebung einrichten
 
-# Windows
+**Windows:**
+```bash
+py -m venv .venv
 .venv\Scripts\activate
-# macOS/Linux
-source .venv/bin/activate
+py -m pip install -r requirements.txt
+```
 
+**macOS/Linux:**
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Frontend-Abhängigkeiten installieren
+### 3. Frontend-Abhängigkeiten installieren
 
 ```bash
 cd frontend
 npm install
+cd ..
 ```
 
-### 3. Entwicklungsserver starten
+### 4. App starten
 
+**Windows (empfohlen):** Doppelklick auf `start.bat` im Projektordner.
+
+Oder manuell — zwei Terminals öffnen:
+
+Terminal 1 (Backend):
 ```bash
-# Aus dem frontend/-Verzeichnis, mit aktivierter venv:
+# Windows
+py -m uvicorn slidebuddy.api.app:app --port 8000 --reload --reload-dir slidebuddy
+
+# macOS/Linux
+python -m uvicorn slidebuddy.api.app:app --port 8000 --reload --reload-dir slidebuddy
+```
+
+Terminal 2 (Frontend):
+```bash
+cd frontend
 npm run dev
 ```
 
-Startet beide Server gleichzeitig:
-- **Web-UI:** http://localhost:3000
-- **API / Swagger:** http://localhost:8000/docs
+Danach im Browser öffnen:
+- **App:** http://localhost:3000
+- **API-Dokumentation:** http://localhost:8000/docs
 
-### 4. API-Keys konfigurieren
+### 5. API-Keys eintragen
 
 Öffne http://localhost:3000 → **Settings** → API-Keys eintragen.
 
 Die Schlüssel werden sicher im **OS-Keyring** gespeichert (Windows Credential Manager / macOS Keychain) — niemals in Dateien oder `.env`.
 
-## Datenbasis
+---
+
+## Häufige Probleme (Windows)
+
+**`python` wird nicht erkannt:**
+Verwende stattdessen `py` — das ist der Windows Python Launcher und funktioniert zuverlässiger.
+
+**`npm` wird nicht erkannt nach Installation:**
+Schließe das Terminal komplett und öffne ein neues Fenster.
+
+**`npm`-Skripte werden blockiert:**
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+---
+
+## Updates
+
+Um die neuesten Daten, Projekte und Quellen zu laden:
+
+```bash
+cd Slidebuddy
+git pull
+```
 
 Das Repository enthält die App-Datenbank, den Vektorspeicher (ChromaDB) und vorhandene Quell-Dateien. Nach einem `git pull` sind alle Projekte und Quellen sofort verfügbar, ohne erneutes Einlesen.
+
+---
 
 ## Projektstruktur
 
@@ -90,8 +141,3 @@ SlideBuddy/
     src/hooks/         # React Query Hooks
     src/lib/           # API-Client & Utilities
 ```
-
-## Windows-Quickstart
-
-Doppelklick auf `start.bat` im Projektverzeichnis (aktivierte venv vorausgesetzt).
-Öffnet zwei Terminalfenster für Backend und Frontend.
