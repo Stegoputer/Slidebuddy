@@ -6,14 +6,12 @@ __pycache__/
 *.egg-info/
 dist/
 build/
-slidebuddy/data/slidebuddy.db
-slidebuddy/data/chroma/
-slidebuddy/data/uploads/
+preferences.json
 .env
 *.log
+
+# Laufzeit-Debugdaten
 slidebuddy/data/prompt_debug.jsonl
-slidebuddy/data/masters/
-preferences.json
 .claude/
 
 # Frontend
@@ -26,3 +24,14 @@ frontend/.next/
 .DS_Store
 Thumbs.db
 *.db-journal
+
+# VS Code
+.vscode/
+
+# TypeScript Build Cache
+frontend/tsconfig.tsbuildinfo
+
+# Persoenliche Utility-Scripts und Notizen
+peek_fonts.py
+peek_names.py
+AI_Praesentations_Tools_Vergleich.xlsx
