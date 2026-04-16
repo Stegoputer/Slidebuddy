@@ -19,12 +19,48 @@ KI-gestützte Präsentationserstellung aus eigenen Quellen. Lade Dokumente hoch 
 
 ## Voraussetzungen
 
-- Python 3.11+ → https://www.python.org/downloads/ (**"Add python.exe to PATH" ankreuzen!**)
-- Node.js 18+ → https://nodejs.org (LTS-Version)
-- Git → https://git-scm.com/download/win
-- API-Key für mindestens einen LLM-Anbieter (Anthropic, OpenAI oder Google)
+Folgende Programme müssen installiert sein. Nach jeder Installation **ein neues Terminal-Fenster öffnen**, damit der Befehl erkannt wird.
 
-> **Wichtig nach der Installation:** Öffne ein neues Terminal-Fenster, damit die Programme erkannt werden.
+### Python 3.11+
+
+1. Herunterladen: https://www.python.org/downloads/ → "Download Python 3.x.x"
+2. Installer starten — **wichtig:** Haken bei **"Add python.exe to PATH"** setzen, bevor du auf "Install Now" klickst
+3. Installation prüfen (neues Terminal):
+   ```
+   py --version
+   ```
+   Falls `py` nicht erkannt wird:
+   ```
+   python --version
+   ```
+   Mindestens `Python 3.11.x` muss erscheinen. Falls keiner der Befehle funktioniert → Python deinstallieren und Schritt 2 wiederholen (PATH-Haken nicht vergessen).
+
+### Node.js 18+
+
+1. Herunterladen: https://nodejs.org → **LTS-Version** (linke Schaltfläche)
+2. Installer starten — Standardeinstellungen übernehmen, einfach durchklicken
+3. Installation prüfen (neues Terminal):
+   ```
+   node --version
+   npm --version
+   ```
+   Beide Befehle müssen eine Versionsnummer ausgeben.
+
+### Git
+
+1. Herunterladen: https://git-scm.com/download/win
+2. Installer starten — Standardeinstellungen übernehmen
+3. Installation prüfen:
+   ```
+   git --version
+   ```
+
+### API-Key
+
+Mindestens einen API-Key von einem dieser Anbieter:
+- **Anthropic (Claude):** https://console.anthropic.com
+- **OpenAI (GPT):** https://platform.openai.com
+- **Google (Gemini):** https://aistudio.google.com
 
 ## Installation
 
@@ -40,6 +76,10 @@ cd Slidebuddy
 **Windows:**
 ```bash
 py -m venv .venv
+```
+> Falls `py` nicht erkannt wird, stattdessen `python -m venv .venv` verwenden.
+
+```bash
 .venv\Scripts\pip install -r requirements.txt
 ```
 
@@ -93,8 +133,9 @@ Die Schlüssel werden sicher im **OS-Keyring** gespeichert (Windows Credential M
 
 ## Häufige Probleme (Windows)
 
-**`python` wird nicht erkannt:**
-Verwende stattdessen `py` — das ist der Windows Python Launcher und funktioniert zuverlässiger.
+**`py` oder `python` wird nicht erkannt:**
+- Versuche den jeweils anderen Befehl: statt `py` → `python`, statt `python` → `py`
+- Funktioniert keiner: Python wurde ohne PATH-Option installiert → Python deinstallieren, neu installieren und dabei **"Add python.exe to PATH"** ankreuzen
 
 **`npm` wird nicht erkannt nach Installation:**
 Schließe das Terminal komplett und öffne ein neues Fenster.
