@@ -1,45 +1,66 @@
 KAPITELPLANUNG MIT QUELLEN-ANALYSE (EBENE 1):
 
-Erstelle eine Kapitelstruktur für die Präsentation basierend auf:
-1. Dem Thema und den verfügbaren Quellen
-2. Der gewünschten Sprache und Zielgruppe
-3. Einem logischen Aufbau mit Einleitung, Hauptteil und Schluss
+Du planst die Kapitelstruktur einer Praesentation. Arbeite systematisch in 4 Schritten:
 
-Analysiere gleichzeitig die Quellenlage pro Kapitel und identifiziere substanzielle Lücken.
+SCHRITT 1 — THEMENEXTRAKTION:
+Lies alle bereitgestellten Quellen-Stichproben sorgfaeltig.
+Erstelle eine vollstaendige Liste aller Hauptthemen und Unterthemen.
+Notiere fuer jedes Thema, welche Quellen es abdecken (Dateinamen).
 
-Für jedes Kapitel definiere:
-- title: Aussagekräftiger Kapiteltitel
-- summary: 2-3 Sätze, die den Inhalt des Kapitels beschreiben
-- estimated_slide_count: Geschätzte Anzahl Folien (3-12 pro Kapitel)
-- key_topics: Wichtigste Themen, die in diesem Kapitel behandelt werden
-- source_coverage: "good" | "partial" | "weak" — Wie gut decken die Quellen dieses Kapitel ab?
+SCHRITT 2 — KAPITELSTRUKTUR ERSTELLEN:
+Gruppiere die Themen in logische, nicht-ueberlappende Kapitel:
+- Einleitung als erstes Kapitel (Thema einfuehren, Ueberblick geben)
+- Hauptkapitel — je ein thematisch klar abgegrenzter Block
+- Schluss/Fazit als letztes Kapitel (Zusammenfassung, Ausblick)
 
-Antworte im JSON-Format:
+Wichtige Regeln:
+- Kapitel duerfen sich thematisch NICHT ueberlappen
+- Jedes Kapitel hat einen klar abgegrenzten inhaltlichen Fokus
+- Die Reihenfolge muss didaktisch sinnvoll sein (vom Allgemeinen zum Spezifischen)
+- Spaetere Kapitel duerfen auf frueheren aufbauen
+
+SCHRITT 3 — QUELLENVERKNUEPFUNG:
+Weise jedem Kapitel die relevanten Quellen-Dateinamen zu.
+Verwende die exakten Dateinamen aus der Liste VERFUEGBARE QUELLEN.
+Bewerte die Quellenabdeckung ehrlich:
+- "good": Quellen decken den Inhalt ausreichend ab
+- "partial": Quellen decken nur Teile ab, eigenes Wissen noetig
+- "weak": Kaum Quellen vorhanden, hauptsaechlich eigenes Wissen
+
+SCHRITT 4 — VALIDIERUNG:
+Pruefe dein Ergebnis bevor du es ausgibst:
+- Ueberlappen sich Kapitel thematisch? → Zusammenlegen oder klarer abgrenzen
+- Fehlen wichtige Themen aus den Quellen? → Kapitel ergaenzen
+- Ist die Reihenfolge logisch aufbauend? → Umordnen falls noetig
+- Hat jedes Kapitel mindestens eine zugeordnete Quelle? Falls nicht, source_coverage="weak" setzen
+
+AUSGABEFORMAT — nur valides JSON:
 {
     "chapters": [
         {
-            "title": "str",
-            "summary": "str",
-            "estimated_slide_count": int,
-            "key_topics": ["str", ...],
-            "source_coverage": "good | partial | weak"
+            "title": "str (max 8 Woerter, aussagekraeftig)",
+            "summary": "str (2-3 Saetze zum geplanten Inhalt)",
+            "estimated_slide_count": "int (3-10 pro Kapitel)",
+            "key_topics": ["str (Kernthemen dieses Kapitels)"],
+            "source_coverage": "good | partial | weak",
+            "source_filenames": ["exakter_dateiname.pdf", "andere_quelle.html"]
         }
     ],
     "source_gaps": [
         {
-            "chapter_title": "str — Betroffenes Kapitel",
-            "description": "str — Was fehlt konkret",
+            "chapter_title": "str",
+            "description": "str (was fehlt konkret)",
             "severity": "low | medium | high"
         }
     ],
-    "total_estimated_slides": int,
-    "reasoning": "Kurze Begründung für diese Struktur"
+    "total_estimated_slides": "int",
+    "reasoning": "Kurze Begruendung fuer die gewaehlte Struktur und Reihenfolge"
 }
 
 RICHTLINIEN:
-- Mindestens 3 Kapitel, maximal 8
-- Gesamtfolienanzahl zwischen 15 und 50
-- Einleitung und Schluss/Fazit jeweils als eigenes Kapitel
-- Kapitel sollten inhaltlich abgeschlossen sein
-- source_gaps nur auflisten wenn die Lücke substanziell ist
-- source_coverage: "good" = Quellen decken das Thema vollständig ab, "partial" = teilweise abgedeckt, "weak" = kaum oder keine Quellen vorhanden
+- Kapitelanzahl angemessen fuer das Thema (typisch 3-8)
+- Gesamtfolienanzahl zwischen 10 und 50
+- Einleitung und Schluss jeweils als eigenes Kapitel
+- Jedes Kapitel inhaltlich abgeschlossen und klar abgegrenzt
+- source_filenames muss die exakten Dateinamen aus VERFUEGBARE QUELLEN enthalten
+- Nur substanzielle Luecken in source_gaps auflisten (nicht jede Kleinigkeit)

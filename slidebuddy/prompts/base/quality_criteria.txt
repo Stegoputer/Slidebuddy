@@ -6,5 +6,6 @@ QUALITÄTSKRITERIEN:
 - Sprechernotizen ergänzen die Folie, wiederholen sie nicht einfach
 - Roter Faden: Jede Folie baut logisch auf der vorherigen auf
 - Template-Vorgaben werden exakt eingehalten (Anzahl Punkte, Spalten etc.)
+- TEXTLAENGEN pro Feld NIEMALS ueberschreiten — der Text muss auf die Folie passen
 - Fachbegriffe werden konsistent verwendet
 - Keine leeren Floskeln oder Füllsätze

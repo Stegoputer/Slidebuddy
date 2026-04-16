@@ -9,9 +9,6 @@ import json
 import logging
 from io import BytesIO
 
-from pptx import Presentation
-from pptx.util import Inches
-
 logger = logging.getLogger(__name__)
 
 from slidebuddy.config.defaults import DB_PATH
@@ -49,6 +46,7 @@ def _export_with_master(
     master_templates: list,
 ) -> bytes:
     """Export using the master PPTX as base, filling placeholders."""
+    from pptx import Presentation
     prs = Presentation(master.file_path)
 
     # Remove any existing slides from the master (keep only layouts)
@@ -205,6 +203,8 @@ def _export_default(
     chapters: list | None,
 ) -> bytes:
     """Create a basic PPTX without a master template."""
+    from pptx import Presentation
+    from pptx.util import Inches
     prs = Presentation()
     prs.slide_width = Inches(13.33)
     prs.slide_height = Inches(7.5)

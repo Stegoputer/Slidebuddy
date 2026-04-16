@@ -1,8 +1,6 @@
 import logging
 from typing import Optional
 
-from langchain_core.language_models import BaseChatModel
-
 from slidebuddy.config.defaults import get_all_api_keys, get_api_key, load_preferences
 
 logger = logging.getLogger(__name__)
@@ -14,8 +12,15 @@ _TASK_TEMPERATURES = {
     "master_analysis": 0.2,
 }
 
+# Request timeout per task (seconds): longer for planning (large prompts)
+_TASK_TIMEOUTS = {
+    "planning": 120,
+    "generation": 90,
+    "master_analysis": 60,
+}
+
 # LLM instance cache — keyed by (model_name, temperature).
-_llm_cache: dict[tuple[str, float], BaseChatModel] = {}
+_llm_cache: dict[tuple[str, float], object] = {}
 
 # Model list cache — fetched once per session from APIs
 _models_cache: dict[str, list[str]] | None = None
@@ -39,13 +44,14 @@ _FALLBACK_MODELS = {
 }
 
 
-def get_llm(task: str = "generation", model_override: Optional[str] = None) -> BaseChatModel:
+def get_llm(task: str = "generation", model_override: Optional[str] = None):
     """Get LLM instance for the given task (cached per model+temperature)."""
     prefs = load_preferences()
     model_name = model_override or prefs.get("default_models", {}).get(task, "claude-sonnet-4-20250514")
     temperature = _TASK_TEMPERATURES.get(task, 0.7)
+    timeout = _TASK_TIMEOUTS.get(task, 90)
 
-    cache_key = (model_name, temperature)
+    cache_key = (model_name, temperature, timeout)
     if cache_key in _llm_cache:
         return _llm_cache[cache_key]
 
@@ -53,13 +59,13 @@ def get_llm(task: str = "generation", model_override: Optional[str] = None) -> B
     api_key = get_api_key(provider)
 
     if provider == "anthropic":
-        llm = _get_anthropic(model_name, api_key, temperature)
+        llm = _get_anthropic(model_name, api_key, temperature, timeout)
     elif provider == "openai":
-        llm = _get_openai(model_name, api_key, temperature)
+        llm = _get_openai(model_name, api_key, temperature, timeout)
     elif provider == "google":
-        llm = _get_google(model_name, api_key, temperature)
+        llm = _get_google(model_name, api_key, temperature, timeout)
     else:
-        llm = _get_anthropic(model_name, api_key, temperature)
+        llm = _get_anthropic(model_name, api_key, temperature, timeout)
 
     _llm_cache[cache_key] = llm
     return llm
@@ -88,19 +94,19 @@ def clear_models_cache():
     _models_cache = None
 
 
-def _get_anthropic(model: str, api_key: str, temperature: float) -> BaseChatModel:
+def _get_anthropic(model: str, api_key: str, temperature: float, timeout: int = 90):
     from langchain_anthropic import ChatAnthropic
-    return ChatAnthropic(model=model, api_key=api_key, temperature=temperature, max_tokens=16000)
+    return ChatAnthropic(model=model, api_key=api_key, temperature=temperature, max_tokens=16000, timeout=timeout)
 
 
-def _get_openai(model: str, api_key: str, temperature: float) -> BaseChatModel:
+def _get_openai(model: str, api_key: str, temperature: float, timeout: int = 90):
     from langchain_openai import ChatOpenAI
-    return ChatOpenAI(model=model, api_key=api_key, temperature=temperature)
+    return ChatOpenAI(model=model, api_key=api_key, temperature=temperature, timeout=timeout)
 
 
-def _get_google(model: str, api_key: str, temperature: float) -> BaseChatModel:
+def _get_google(model: str, api_key: str, temperature: float, timeout: int = 90):
     from langchain_google_genai import ChatGoogleGenerativeAI
-    return ChatGoogleGenerativeAI(model=model, google_api_key=api_key, temperature=temperature)
+    return ChatGoogleGenerativeAI(model=model, google_api_key=api_key, temperature=temperature, timeout=timeout)
 
 
 def get_available_providers() -> list[str]:

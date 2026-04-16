@@ -18,6 +18,7 @@ class Project:
     prompt_override: Optional[str] = None  # JSON string
     global_text_length: str = "medium"
     llm_config: Optional[str] = None  # JSON string
+    planning_prompt: Optional[str] = None  # User's goal/context for planning
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
 
@@ -53,6 +54,8 @@ class Chapter:
     summary: str = ""
     estimated_slide_count: int = 0
     status: str = "planned"  # planned, generating, review, approved
+    source_ids: str = ""  # JSON-encoded list of source IDs, e.g. '["uuid1"]'
+    source_segment: Optional[str] = None  # JSON: "[start_char, end_char]" or null
 
 
 @dataclass

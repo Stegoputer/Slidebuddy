@@ -18,17 +18,30 @@ def search_project_sources(project_id: str, query: str, n_results: int = 3) -> l
 
 
 def search_global_slides(query: str, language: str = "de", n_results: int = 2) -> list[dict]:
-    """Search global slide collection for reusable slides."""
+    """Search global slide collection for reusable slides.
+
+    Tries to filter by language first; falls back to unfiltered search if the
+    metadata field doesn't exist on stored documents (e.g. slides indexed
+    before the language field was introduced).
+    """
     collection = get_global_slides_collection()
     count = collection.count()
     if count == 0:
         return []
 
-    results = collection.query(
-        query_texts=[query],
-        n_results=min(n_results, count),
-        where={"language": language},
-    )
+    effective_n = min(n_results, count)
+    try:
+        results = collection.query(
+            query_texts=[query],
+            n_results=effective_n,
+            where={"language": language},
+        )
+    except Exception:
+        # where-filter fails when documents lack the "language" metadata key
+        results = collection.query(
+            query_texts=[query],
+            n_results=effective_n,
+        )
     return _format_results(results)
 
 
@@ -86,6 +99,117 @@ def add_slide_to_global(slide_id: str, document: str, metadata: dict) -> None:
         documents=[document],
         metadatas=[metadata],
     )
+
+
+def assign_chunks_for_slide(
+    project_id: str,
+    query: str,
+    source_ids: list[str],
+    mode: str = "chunk",
+    n_results: int = 3,
+    source_texts: dict[str, str] | None = None,
+    slide_index: int = 0,
+    total_slides: int = 1,
+) -> list[dict]:
+    """Route chunk assignment based on mode.
+
+    chunk       — global semantic search across all sources (current default)
+    hybrid      — semantic search within chapter sources, topped up with global
+    full_source — full cleaned source text split sequentially across slides
+                  (uses source_texts dict; falls back to chunk if empty)
+
+    Falls back to "chunk" if source_ids is empty regardless of mode.
+    """
+    if not source_ids or mode == "chunk":
+        return search_project_sources(project_id, query, n_results)
+
+    if mode == "full_source":
+        result = _get_full_source_segment(
+            source_ids, source_texts or {}, slide_index, total_slides,
+        )
+        # Fallback to global chunk search if no original_text available
+        return result if result else search_project_sources(project_id, query, n_results)
+
+    if mode == "hybrid":
+        return _search_hybrid(project_id, query, source_ids, n_results)
+
+    # Unknown mode → global search
+    return search_project_sources(project_id, query, n_results)
+
+
+def _get_full_source_segment(
+    source_ids: list[str],
+    source_texts: dict[str, str],
+    slide_index: int,
+    total_slides: int,
+) -> list[dict]:
+    """Split full cleaned source text evenly across slides.
+
+    Concatenates original_text for all source_ids in order, then returns the
+    slice that belongs to slide_index. Each slide gets an equal share of the
+    full text — total token usage across all slides equals the full document.
+    """
+    full_text = "\n\n".join(
+        source_texts[sid] for sid in source_ids if source_texts.get(sid)
+    )
+    if not full_text:
+        return []
+
+    n = len(full_text)
+    start = (slide_index * n) // max(total_slides, 1)
+    end = ((slide_index + 1) * n) // max(total_slides, 1)
+    segment = full_text[start:end].strip()
+
+    if not segment:
+        return []
+    return [{"text": segment, "metadata": {"mode": "full_source"}, "distance": 0.0}]
+
+
+def _search_hybrid(
+    project_id: str,
+    query: str,
+    source_ids: list[str],
+    n_results: int,
+) -> list[dict]:
+    """Semantic search within chapter sources, topped up from global pool.
+
+    1. Query with ChromaDB where-filter for source_ids.
+    2. If fewer than n_results found, fill remaining slots from global search.
+    """
+    collection = get_project_sources_collection(project_id)
+    if collection.count() == 0:
+        return []
+
+    where = (
+        {"source_id": {"$in": source_ids}}
+        if len(source_ids) > 1
+        else {"source_id": source_ids[0]}
+    )
+    try:
+        results = _format_results(
+            collection.query(
+                query_texts=[query],
+                n_results=min(n_results, collection.count()),
+                where=where,
+            )
+        )
+    except Exception:
+        results = []
+
+    if len(results) < n_results:
+        seen = {
+            r["metadata"].get("source_id", "") + str(r["metadata"].get("chunk_index", ""))
+            for r in results
+        }
+        for r in search_project_sources(project_id, query, n_results):
+            key = r["metadata"].get("source_id", "") + str(r["metadata"].get("chunk_index", ""))
+            if key not in seen:
+                results.append(r)
+                seen.add(key)
+                if len(results) >= n_results:
+                    break
+
+    return results[:n_results]
 
 
 def _format_results(results: dict) -> list[dict]:

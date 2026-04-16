@@ -17,6 +17,7 @@ from slidebuddy.db.queries import (
     get_slides_for_project,
     get_sources_for_project,
     get_versions_for_project,
+    get_all_section_plans,
 )
 
 # Ordered workflow steps — each maps to a current_page value
@@ -54,9 +55,7 @@ def detect_project_step(conn: sqlite3.Connection, project_id: str) -> str:
         return "generation"
 
     # Check for section plans
-    has_sections = any(
-        v.state and v.state.startswith("section_plan_") for v in versions
-    )
+    has_sections = bool(get_all_section_plans(conn, project_id))
     if has_sections:
         return "sections"
 
@@ -98,7 +97,9 @@ def delete_steps_after(conn: sqlite3.Connection, project_id: str, keep_step: str
     """
     steps_to_delete = get_steps_after(keep_step)
 
-    for step in steps_to_delete:
+    # Process in reverse order so child rows are deleted before parents
+    # (e.g. slides reference chapters via FK → delete slides first)
+    for step in reversed(steps_to_delete):
         if step == "generation":
             # Delete slides and generation drafts
             conn.execute("DELETE FROM slides WHERE project_id = ?", (project_id,))
@@ -118,10 +119,7 @@ def delete_steps_after(conn: sqlite3.Connection, project_id: str, keep_step: str
 
         elif step == "sections":
             # Delete section plans
-            conn.execute(
-                "DELETE FROM versions WHERE project_id = ? AND state LIKE 'section_plan_%'",
-                (project_id,),
-            )
+            conn.execute("DELETE FROM section_plans WHERE project_id = ?", (project_id,))
 
         elif step == "chapters":
             # Delete chapters, source gaps, and chapter plan version

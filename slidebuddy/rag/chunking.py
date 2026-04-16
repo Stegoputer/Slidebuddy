@@ -12,7 +12,7 @@ _SENTENCE_RE = re.compile(r"(?<=[.!?])\s+(?=[A-ZÄÖÜ\"„\'])")
 
 # Default target: ~500 tokens ≈ 2000 chars.  Max hard limit = 2× target.
 DEFAULT_CHUNK_SIZE = 500
-DEFAULT_OVERLAP = 50
+DEFAULT_OVERLAP = 20
 
 
 def chunk_text(
@@ -141,7 +141,23 @@ def _hard_split(text: str, max_tokens: int) -> list[str]:
 
 
 def _get_overlap(paragraphs: list[str], target_tokens: int) -> Optional[str]:
-    """Get text from end of paragraph list for overlap."""
+    """Get text from end of paragraph list for overlap.
+
+    If the last paragraph exceeds target_tokens, take only the last
+    target_tokens worth of characters from it (truncated from the front).
+    """
+    if not paragraphs:
+        return None
+
+    last = paragraphs[-1]
+    last_tokens = _estimate_tokens(last)
+
+    # If the last paragraph alone exceeds target, truncate from the front
+    if last_tokens > target_tokens:
+        target_chars = target_tokens * 4
+        return last[-target_chars:]
+
+    # Otherwise collect whole paragraphs from the end
     overlap_parts: list[str] = []
     tokens = 0
     for para in reversed(paragraphs):

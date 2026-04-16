@@ -8,8 +8,6 @@ template names, descriptions, and generation prompts.
 import json
 import re
 
-from pptx import Presentation
-
 # Generic OBJECT placeholder names that are decorative, not content
 _GENERIC_OBJECT_PATTERNS = re.compile(
     r"^(Inhaltsplatzhalter|Content Placeholder|Platzhalter|Placeholder|Shadow|Rectangle|Oval|"
@@ -48,6 +46,7 @@ def analyze_master(file_path: str) -> list[dict]:
         "structure_summary": str,       # Human-readable summary
     }
     """
+    from pptx import Presentation
     prs = Presentation(file_path)
     layouts = []
 
@@ -130,14 +129,18 @@ def estimate_text_capacity(placeholder: dict) -> dict:
     readable via python-pptx, we estimate based on placeholder name patterns
     and box dimensions.
 
+    If size data is unavailable (legacy imports), uses conservative defaults
+    based on placeholder name patterns.
+
     Returns dict with: estimated_font_pt, max_lines, max_words, text_hint
     """
-    w = placeholder["size"]["width"]
-    h = placeholder["size"]["height"]
-    name_lower = placeholder["name"].lower()
+    size = placeholder.get("size", {})
+    w = size.get("width", 0)
+    h = size.get("height", 0)
+    name_lower = placeholder.get("name", "").lower()
 
     # Estimate font size from placeholder name pattern
-    if placeholder["type"] == "TITLE":
+    if placeholder.get("type") == "TITLE":
         font_pt = 28
     elif "subheading" in name_lower or "heading" in name_lower:
         font_pt = 18
@@ -153,14 +156,17 @@ def estimate_text_capacity(placeholder: dict) -> dict:
         # Default body text
         font_pt = 14
 
-    # Calculate capacity
-    # avg char width ≈ font_pt * 0.6 points; 1 inch = 72 points
-    char_width_inches = (font_pt * 0.6) / 72
-    line_height_inches = (font_pt * 1.4) / 72  # 1.4x line spacing
+    # If we have actual dimensions, calculate from geometry
+    if w > 0 and h > 0:
+        char_width_inches = (font_pt * 0.6) / 72
+        line_height_inches = (font_pt * 1.4) / 72
 
-    chars_per_line = max(1, int(w / char_width_inches)) if char_width_inches > 0 else 20
-    max_lines = max(1, int(h / line_height_inches)) if line_height_inches > 0 else 2
-    max_words = max(1, int(chars_per_line * max_lines / 5.5))  # avg 5.5 chars per German word
+        chars_per_line = max(1, int(w / char_width_inches)) if char_width_inches > 0 else 20
+        max_lines = max(1, int(h / line_height_inches)) if line_height_inches > 0 else 2
+        max_words = max(1, int(chars_per_line * max_lines / 5.5))
+    else:
+        # Fallback: conservative defaults based on field name pattern
+        max_lines, max_words = _fallback_capacity(name_lower, placeholder.get("type", ""))
 
     # Generate human-readable hint
     if max_lines <= 1:
@@ -176,6 +182,31 @@ def estimate_text_capacity(placeholder: dict) -> dict:
         "max_words": max_words,
         "text_hint": hint,
     }
+
+
+def _fallback_capacity(name_lower: str, ph_type: str) -> tuple[int, int]:
+    """Conservative word/line limits when placeholder dimensions are unavailable.
+
+    Returns (max_lines, max_words) based on the placeholder name pattern.
+    These are intentionally conservative — it's better to generate slightly
+    too little text than to overflow the slide.
+    """
+    if ph_type == "TITLE":
+        return 1, 8
+    if "bridge" in name_lower:
+        return 1, 3  # Bridge: 1-3 keywords only
+    if "conclusion" in name_lower or "fazit" in name_lower:
+        return 1, 10  # One short sentence
+    if "subheading" in name_lower or "heading" in name_lower:
+        return 1, 5  # Short heading
+    if "quote" in name_lower or "statement" in name_lower:
+        return 2, 20  # A punchy quote
+    if "person" in name_lower or "count" in name_lower:
+        return 1, 5  # Name or number
+    if "bullet" in name_lower:
+        return 2, 15  # Short bullet point
+    # Default text field: ~2-3 sentences
+    return 4, 25
 
 
 def build_content_schema(content_placeholders: list[dict]) -> dict:
@@ -247,10 +278,10 @@ def build_generation_prompt(
         lines.append("- Personenfeld mit Name und ggf. Rolle/Titel fuellen")
 
     if conclusion_phs:
-        lines.append("- Fazit/Conclusion-Feld mit einer zusammenfassenden Kernaussage fuellen (1 Satz)")
+        lines.append("- Fazit/Conclusion-Feld: eine kurze Kernaussage, maximal 1 Satz")
 
     if bridge_phs:
-        lines.append("- Bridge-Feld verbindet die Abschnitte thematisch (kurzer Uebergangssatz)")
+        lines.append("- Bridge-Feld: NUR 1-3 Schlagwoerter (z.B. 'Kernprozesse', 'Ausblick'), KEIN ganzer Satz")
 
     # Per-field text capacity hints
     lines.append("")
@@ -259,7 +290,12 @@ def build_generation_prompt(
         if ph["type"] in ("TITLE", "PICTURE"):
             continue
         capacity = estimate_text_capacity(ph)
-        lines.append(f'  "{ph["name"]}": {capacity["text_hint"]} ({ph["size"]["width"]:.1f}x{ph["size"]["height"]:.1f} Zoll, ~{capacity["estimated_font_pt"]}pt)')
+        size = ph.get("size", {})
+        if size.get("width") and size.get("height"):
+            dims = f' ({size["width"]:.1f}x{size["height"]:.1f} Zoll, ~{capacity["estimated_font_pt"]}pt)'
+        else:
+            dims = ""
+        lines.append(f'  "{ph["name"]}": {capacity["text_hint"]}{dims}')
 
     # JSON output reminder — only text fields (no images)
     schema_fields = list(content_schema.keys())
@@ -295,9 +331,14 @@ def build_llm_analysis_prompt(layouts: list[dict]) -> str:
         phs = []
         for ph in layout["content_placeholders"]:
             capacity = estimate_text_capacity(ph)
+            size = ph.get("size", {})
+            if size.get("width") and size.get("height"):
+                dims = f"{size['width']:.1f}x{size['height']:.1f} Zoll, "
+            else:
+                dims = ""
             phs.append(
                 f"  - {ph['name']} ({ph['type']}, "
-                f"{ph['size']['width']:.1f}x{ph['size']['height']:.1f} Zoll, "
+                f"{dims}"
                 f"~{capacity['estimated_font_pt']}pt, {capacity['text_hint']})"
             )
 
@@ -330,3 +371,92 @@ Antworte als JSON-Array. Jedes Element hat:
 
 Ueberspringe leere Layouts (ohne Content-Placeholders).
 Antworte NUR mit dem JSON-Array, ohne Markdown-Fences."""
+
+
+# ---------------------------------------------------------------------------
+# Orchestration: re-analyze an existing master and update DB schemas
+# ---------------------------------------------------------------------------
+
+import logging
+import sqlite3
+
+_logger = logging.getLogger(__name__)
+
+
+def reanalyze_master_templates(conn: sqlite3.Connection, master_id: str) -> int:
+    """Re-analyze an existing master's PPTX to update content schemas with word limits.
+
+    Reads the PPTX file, extracts placeholder dimensions, recalculates
+    content_schema (with max_words hints) and generation_prompt (with
+    TEXTLAENGEN), then updates each template in the DB.
+
+    Returns the number of templates updated.
+    """
+    from slidebuddy.db.queries import get_slide_master, get_templates_for_master, update_master_template
+
+    master = get_slide_master(conn, master_id)
+    if not master:
+        raise ValueError(f"Master {master_id} not found")
+
+    # Re-analyze the PPTX file
+    layouts = analyze_master(master.file_path)
+    layout_by_index = {l["layout_index"]: l for l in layouts}
+
+    templates = get_templates_for_master(conn, master_id)
+    updated_count = 0
+
+    for tpl in templates:
+        layout = layout_by_index.get(tpl.layout_index)
+        if not layout or not layout["content_placeholders"]:
+            continue
+
+        content_phs = layout["content_placeholders"]
+
+        # Rebuild content_schema with word limit hints
+        new_schema = build_content_schema(content_phs)
+
+        # Rebuild generation_prompt with TEXTLAENGEN section
+        new_gen_prompt = build_generation_prompt(
+            layout["layout_name"], content_phs, new_schema,
+        )
+
+        # Preserve the existing ZIEL line from the old generation_prompt
+        if tpl.generation_prompt:
+            import re as _re
+            ziel_match = _re.search(r'(- ZIEL[^\n]+)', tpl.generation_prompt)
+            if ziel_match:
+                new_gen_prompt = ziel_match.group(1) + "\n" + new_gen_prompt
+
+        # Update placeholder_schema to include size data
+        new_ph_schema = json.dumps(
+            [
+                {
+                    "name": ph["name"],
+                    "type": ph["type"],
+                    "idx": ph["idx"],
+                    "size": ph.get("size", {}),
+                }
+                for ph in content_phs
+            ]
+        )
+
+        tpl.placeholder_schema = new_ph_schema
+        tpl.content_schema = json.dumps(new_schema)
+        tpl.generation_prompt = new_gen_prompt
+        update_master_template(conn, tpl)
+        updated_count += 1
+
+        _logger.info(
+            "Updated template '%s': %d fields with word limits",
+            tpl.template_key, len(new_schema),
+        )
+
+    # Clear prompt caches so new schemas are used immediately
+    from slidebuddy.llm.prompt_assembler import clear_template_cache
+    clear_template_cache()
+
+    # Clear word limit cache in slide generation
+    from slidebuddy.core.slide_generation import _word_limit_cache
+    _word_limit_cache.clear()
+
+    return updated_count

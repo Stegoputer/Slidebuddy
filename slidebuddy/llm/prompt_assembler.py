@@ -1,7 +1,10 @@
+import logging
 from functools import lru_cache
 from pathlib import Path
 
 from slidebuddy.config.defaults import PROMPTS_DIR, load_preferences
+
+_logger = logging.getLogger(__name__)
 
 # Prompt files never change at runtime, so we cache them permanently.
 # lru_cache(maxsize=32) keeps the last 32 unique file reads in memory
@@ -296,19 +299,41 @@ def _load_template_summary() -> str:
 
     Section planning only needs to know WHICH templates exist and WHAT they're for,
     not the full JSON schema or generation hints. This reduces ~27,500 chars to ~2,000.
+
+    Respects preferred_templates from user preferences: if set, only those templates
+    are shown to the LLM, steering it toward the user's preferred layouts.
     """
+    prefs = load_preferences()
+    preferred = prefs.get("preferred_templates", [])
+
     # Try master templates first
     summary = _get_master_template_summary()
     if summary:
+        if preferred:
+            filtered = [
+                line for line in summary.split("\n")
+                if any(line.strip().startswith(f"- {key}") for key in preferred)
+            ]
+            if filtered:
+                return "\n".join(filtered)
+            _logger.warning(
+                "preferred_templates %s matched no master templates — showing all",
+                preferred,
+            )
         return summary
 
-    # Fallback to file-based templates
-    from slidebuddy.config.defaults import get_available_template_types, get_template_labels
-    labels = get_template_labels()
-    lines = []
-    for key in get_available_template_types():
-        label = labels.get(key, key)
-        lines.append(f"- {key}: {label}")
+    # Fallback to built-in default templates
+    from slidebuddy.config.defaults import _DEFAULT_TEMPLATE_LABELS, TEMPLATE_TYPES
+
+    types_to_show = [t for t in TEMPLATE_TYPES if t in preferred] if preferred else TEMPLATE_TYPES
+    if not types_to_show:
+        _logger.warning(
+            "preferred_templates %s matched no built-in templates — showing all",
+            preferred,
+        )
+        types_to_show = TEMPLATE_TYPES
+
+    lines = [f"- {key}: {_DEFAULT_TEMPLATE_LABELS.get(key, key)}" for key in types_to_show]
     return "\n".join(lines) if lines else "Keine Templates verfuegbar."
 
 
@@ -349,8 +374,14 @@ def _get_master_template_summary() -> str | None:
 
 
 def _format_master_template(tpl) -> str:
-    """Format a MasterTemplate into the same text format as file-based templates."""
+    """Format a MasterTemplate into the same text format as file-based templates.
+
+    Extracts TEXTLAENGEN from generation_prompt and places them directly
+    after the JSON-SCHEMA — closer to where the LLM focuses when generating
+    content. This dramatically improves word limit adherence.
+    """
     import json
+    import re
 
     lines = [f"TEMPLATE: {tpl.template_key} ({tpl.display_name})"]
     lines.append("")
@@ -368,15 +399,27 @@ def _format_master_template(tpl) -> str:
         except json.JSONDecodeError:
             pass
 
-    # JSON schema
+    # JSON schema + word limits (combined for proximity)
     if tpl.content_schema:
-        lines.append("JSON-SCHEMA:")
+        lines.append("JSON-SCHEMA (mit MAXIMALER Wortanzahl pro Feld — NIEMALS ueberschreiten!):")
         lines.append(tpl.content_schema)
         lines.append("")
 
-    # Generation hints
+    # Generation hints — split TEXTLAENGEN out so we place them above
     if tpl.generation_prompt:
-        lines.append("HINWEISE:")
-        lines.append(tpl.generation_prompt)
+        prompt_text = tpl.generation_prompt
+        # Extract and elevate TEXTLAENGEN block
+        textlaengen_match = re.split(r"\n\s*TEXTLAENGEN", prompt_text)
+        if len(textlaengen_match) > 1:
+            hints_before = textlaengen_match[0].strip()
+            textlaengen_block = "STRIKTE WORTLIMITS (TEXTLAENGEN)" + textlaengen_match[1]
+            lines.append(textlaengen_block.strip())
+            lines.append("")
+            if hints_before:
+                lines.append("HINWEISE:")
+                lines.append(hints_before)
+        else:
+            lines.append("HINWEISE:")
+            lines.append(prompt_text)
 
     return "\n".join(lines)

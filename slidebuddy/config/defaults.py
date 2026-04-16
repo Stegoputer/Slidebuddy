@@ -23,17 +23,28 @@ DEFAULT_PREFERENCES = {
         "embedding": "text-embedding-3-small",
     },
     "batch_size": 4,
+    "planning": {
+        "min_chars_per_slide": 1500,
+        "target_slides_per_chapter": 5,
+        "max_chapters": 12,
+        "min_slides_per_chapter": 3,
+    },
     "custom_prompts": {},
     "active_prompts": {},
     "rag": {
-        "n_sources_planning": 5,
-        "n_global_planning": 3,
-        "n_sources_generation": 3,
-        "n_global_generation": 2,
+        "overview_sample_interval": 2,
+        "overview_chars_per_chunk": 400,
         "n_chunks_per_slide": 3,
-        "max_context_chars": 6000,
+        "n_global_generation": 0,
         "chunk_size": 500,
-        "chunk_overlap": 50,
+        "chunk_overlap": 20,
+        # How chunks are assigned to slides during section planning:
+        #   "chunk"       — Semantic search across all sources (default, flexible)
+        #   "hybrid"      — Semantic search within each chapter's linked sources,
+        #                   topped up with global results if needed
+        #   "full_source" — The full original text of each chapter's linked source
+        #                   is split sequentially across its slides (1:1 mapping)
+        "chunk_assignment_mode": "chunk",
     },
 }
 
@@ -47,21 +58,6 @@ TEMPLATE_TYPES = [
     "quote",
 ]
 
-def get_available_template_types() -> list[str]:
-    """Return template types from active master or defaults."""
-    try:
-        from slidebuddy.db.migrations import get_connection
-        from slidebuddy.db.queries import get_active_master_templates
-        conn = get_connection(DB_PATH)
-        master_tpls = get_active_master_templates(conn)
-        conn.close()
-        if master_tpls:
-            return [t.template_key for t in master_tpls if t.is_active]
-    except Exception:
-        pass
-    return TEMPLATE_TYPES
-
-
 # Display names for default templates (master templates provide their own)
 _DEFAULT_TEMPLATE_LABELS = {
     "title": "Startfolie / Kapitelteiler",
@@ -72,21 +68,6 @@ _DEFAULT_TEMPLATE_LABELS = {
     "detail": "Detailfolie",
     "quote": "Zitat / These",
 }
-
-
-def get_template_labels() -> dict[str, str]:
-    """Return {template_key: display_name} for all available templates."""
-    try:
-        from slidebuddy.db.migrations import get_connection
-        from slidebuddy.db.queries import get_active_master_templates
-        conn = get_connection(DB_PATH)
-        master_tpls = get_active_master_templates(conn)
-        conn.close()
-        if master_tpls:
-            return {t.template_key: t.display_name for t in master_tpls if t.is_active}
-    except Exception:
-        pass
-    return _DEFAULT_TEMPLATE_LABELS
 
 
 TEXT_LENGTHS = ["short", "medium", "long"]

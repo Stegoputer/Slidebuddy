@@ -4,10 +4,13 @@ Eliminates duplicated load/save patterns across UI pages.
 """
 
 import json
+import logging
 import sqlite3
 
 from slidebuddy.db.models import Version
 from slidebuddy.db.queries import create_version, get_versions_for_project
+
+logger = logging.getLogger(__name__)
 
 
 def load_versioned_states(
@@ -23,12 +26,31 @@ def load_versioned_states(
     result: dict[int, list | dict] = {}
     versions = get_versions_for_project(conn, project_id)
     for v in versions:
-        if v.state and v.state.startswith(prefix) and v.state_json:
-            try:
-                idx = int(v.state.split("_")[-1])
-                result[idx] = json.loads(v.state_json)
-            except (ValueError, json.JSONDecodeError):
-                pass
+        if not v.state or not v.state.startswith(prefix):
+            continue
+        # Skip empty or None JSON
+        if not v.state_json or not v.state_json.strip():
+            logger.warning(
+                "Skipping version %s for project %s: empty state_json",
+                v.state, project_id,
+            )
+            continue
+        try:
+            idx = int(v.state.split("_")[-1])
+            parsed = json.loads(v.state_json)
+            # Only accept dicts and lists
+            if isinstance(parsed, (dict, list)):
+                result[idx] = parsed
+            else:
+                logger.warning(
+                    "Skipping version %s for project %s: unexpected type %s",
+                    v.state, project_id, type(parsed).__name__,
+                )
+        except (ValueError, json.JSONDecodeError) as e:
+            logger.warning(
+                "Skipping corrupt versioned state %s for project %s: %s",
+                v.state, project_id, e,
+            )
     return result
 
 

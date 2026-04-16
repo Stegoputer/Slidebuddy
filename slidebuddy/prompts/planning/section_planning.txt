@@ -23,6 +23,6 @@ Antworte im JSON-Format:
 }
 
 RICHTLINIEN:
-- Template-Variation: Nicht mehr als 2 gleiche Templates in Folge
-- Template-Auswahl passend zum Inhalt (Vergleiche → Vergleichs-Template, Schritte → Aufzaehlungs-Template, etc.)
+- Template-Variation: NIEMALS mehr als 2 gleiche Templates in Folge. Nutze die volle Bandbreite der verfuegbaren Templates — variiere so stark wie moeglich.
+- Template-Auswahl passend zum Inhalt (Vergleiche → Vergleichs-Template, Schritte → Aufzaehlungs-Template, Details → Detail-Template, etc.)
 - Wenn RAG-Treffer gut passen, als reused_slide_id markieren

@@ -17,8 +17,13 @@ STIL:
 - Konkrete Zahlen/Fakten statt vager Aussagen
 - Variation in Satzstruktur und Einstiegssaetzen
 
-TEXTUMFANG:
-- Folientexte: Halte dich an die TEXTLAENGEN-Angaben im Template-Prompt (basierend auf Platzhaltergroesse).
+TEXTUMFANG — STRIKTE REGELN:
+- Folientexte: Jedes Feld hat eine MAXIMALE Wortanzahl (siehe TEXTLAENGEN im Template).
+  Diese Limits sind HART — NIEMALS ueberschreiten! Der Text muss auf die Folie passen.
+  Lieber praegnant und kuerzer als das Limit, statt es auszureizen.
+- Subheading/Heading-Felder: Kurze Schlagzeile, MAXIMAL die angegebene Wortanzahl.
+- Bridge-Felder: NUR 1-3 Schlagwoerter (z.B. "Kernprozesse", "Naechste Schritte"), KEIN ganzer Satz.
+- Conclusion/Fazit-Felder: Ein einziger kurzer Satz.
 - Sprechernotizen je nach Stufe:
   "Kurz": 2-3 Saetze (~50 Woerter)
   "Mittel": 4-6 Saetze (~100 Woerter)

@@ -15,3 +15,14 @@ slidebuddy/data/prompt_debug.jsonl
 slidebuddy/data/masters/
 preferences.json
 .claude/
+
+# Frontend
+node_modules/
+.next/
+frontend/node_modules/
+frontend/.next/
+
+# OS
+.DS_Store
+Thumbs.db
+*.db-journal
