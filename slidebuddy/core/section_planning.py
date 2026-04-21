@@ -198,10 +198,11 @@ def _plan_sections_full_source(
 
     planning = load_preferences().get("planning", {})
     min_chars = planning.get("min_chars_per_slide", 1500)
-    estimated = max(1, int(chapter.get("estimated_slide_count") or 5))
-    # Cap: each slide needs at least min_chars of source text
+    min_per_ch = planning.get("min_slides_per_chapter", 3)
+    estimated = max(min_per_ch, int(chapter.get("estimated_slide_count") or 5))
+    # Cap by text length, but never go below the configured minimum per chapter
     max_from_text = max(1, len(source_text.strip()) // min_chars) if source_text.strip() else estimated
-    n_slides = min(estimated, max_from_text)
+    n_slides = max(min_per_ch, min(estimated, max_from_text))
 
     if not source_text.strip():
         return {"slides": [], "reasoning": "Kein Quelltext vorhanden."}

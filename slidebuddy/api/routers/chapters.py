@@ -99,16 +99,21 @@ def plan(project_id: str, body: ChapterPlanRequest = None, conn=Depends(get_db))
     user_slide_count = _parse_user_slide_count(body.feedback if body else None)
     if user_slide_count:
         density["max_total_slides"] = user_slide_count
-        # Recalculate suggested chapters based on the user's desired total
+        min_per_ch = density["min_slides_per_chapter"]
         target_per_ch = density["target_slides_per_chapter"]
+        # Cap based on target slides per chapter — biases toward fewer, larger chapters
+        # (using min_per_ch would be too permissive and allow many small chapters)
+        max_chapters_for_total = max(1, user_slide_count // max(1, target_per_ch))
+        density["max_chapters"] = min(density["max_chapters"], max_chapters_for_total)
         density["suggested_chapters"] = max(
-            2,
+            1,
             min(density["max_chapters"], user_slide_count // max(1, target_per_ch)),
         )
         logger.info(
             "User requested %d slides total — density updated: max_total=%d, "
-            "suggested_chapters=%d",
-            user_slide_count, density["max_total_slides"], density["suggested_chapters"],
+            "max_chapters=%d, suggested_chapters=%d",
+            user_slide_count, density["max_total_slides"],
+            density["max_chapters"], density["suggested_chapters"],
         )
 
     if strategy == "one_per_source":

@@ -27,7 +27,7 @@ def compute_density_params(total_chars: int, planning_prefs: dict | None = None)
     min_per_ch = prefs.get("min_slides_per_chapter", 3)
 
     max_total_slides = max(1, total_chars // min_chars)
-    suggested_chapters = max(2, min(max_ch, max_total_slides // max(1, target_per_ch)))
+    suggested_chapters = max(1, min(max_ch, max_total_slides // max(1, target_per_ch)))
 
     return {
         "total_chars": total_chars,

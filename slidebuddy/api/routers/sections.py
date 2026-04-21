@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -23,6 +24,23 @@ from ..schemas import SectionPlanOut, SectionPlanUpdate
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _strip_planning_directives(feedback: str | None) -> str | None:
+    """Remove slide-count directive from planning feedback before section planning.
+
+    The total slide count (GEWÜNSCHTE FOLIENANZAHL: N) is a chapter-planning
+    directive already encoded in each chapter's estimated_slide_count. Passing
+    it to section planning causes the LLM to misinterpret the total as a
+    per-chapter target.
+    """
+    if not feedback:
+        return feedback
+    lines = [
+        line for line in feedback.splitlines()
+        if not re.search(r"GEWÜNSCHTE\s+FOLIENANZAHL:", line, re.IGNORECASE)
+    ]
+    return "\n".join(lines).strip() or None
 
 
 @router.get("/{project_id}/sections", response_model=list[SectionPlanOut])
@@ -118,7 +136,7 @@ def plan(project_id: str, conn=Depends(get_db)):
             source_ids=chapter_source_ids,
             chunk_mode=effective_mode,
             source_texts=source_texts,
-            user_feedback=project.planning_prompt,
+            user_feedback=_strip_planning_directives(project.planning_prompt),
         )
 
     # Parallelisierung: LLM-Calls sind I/O-bound, ThreadPoolExecutor reicht.
