@@ -11,6 +11,7 @@ export interface PlanPromptResult {
 
 interface PlanPromptModalProps {
   strategyLabel: string;
+  initialValues?: Partial<PlanPromptResult>;
   onSubmit: (result: PlanPromptResult) => void;
   onCancel: () => void;
 }
@@ -34,12 +35,14 @@ export function buildFeedbackString(result: PlanPromptResult): string {
   return parts.join("\n");
 }
 
-export function PlanPromptModal({ strategyLabel, onSubmit, onCancel }: PlanPromptModalProps) {
-  const [goal, setGoal] = useState("");
-  const [audience, setAudience] = useState("");
-  const [slideCount, setSlideCount] = useState<number | "">("");
-  const [focus, setFocus] = useState("");
-  const [showAdvanced, setShowAdvanced] = useState(false);
+export function PlanPromptModal({ strategyLabel, initialValues, onSubmit, onCancel }: PlanPromptModalProps) {
+  const [goal, setGoal] = useState(initialValues?.goal ?? "");
+  const [audience, setAudience] = useState(initialValues?.audience ?? "");
+  const [slideCount, setSlideCount] = useState<number | "">(initialValues?.slideCount ?? "");
+  const [focus, setFocus] = useState(initialValues?.focus ?? "");
+  const [showAdvanced, setShowAdvanced] = useState(
+    !!(initialValues?.audience || initialValues?.slideCount || initialValues?.focus)
+  );
 
   const canSubmit = goal.trim().length > 0;
 
@@ -128,7 +131,7 @@ export function PlanPromptModal({ strategyLabel, onSubmit, onCancel }: PlanPromp
               {/* Slide count */}
               <div>
                 <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">
-                  Gewünschte Folienanzahl
+                  Gewünschte Folienanzahl (gesamt)
                 </label>
                 <input
                   type="number"

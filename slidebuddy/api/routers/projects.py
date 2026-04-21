@@ -28,6 +28,7 @@ def _project_to_out(p: Project) -> ProjectOut:
         id=p.id, name=p.name, topic=p.topic, language=p.language,
         global_text_length=p.global_text_length,
         prompt_override=p.prompt_override, llm_config=p.llm_config,
+        planning_prompt=p.planning_prompt,
         created_at=p.created_at, updated_at=p.updated_at,
     )
 

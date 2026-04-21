@@ -2,13 +2,13 @@
 
 import { use, useEffect, useState } from "react";
 import { ProjectLoader } from "@/components/ProjectLoader";
-import { PlanPromptModal, buildFeedbackString } from "@/components/PlanPromptModal";
+import { PlanPromptModal, buildFeedbackString, type PlanPromptResult } from "@/components/PlanPromptModal";
 import { useChapters, usePlanChapters, useApproveChapters, useUpdateChapters, useSourceGaps, type PlanInput } from "@/hooks/useChapters";
 import { useSources } from "@/hooks/useSources";
 import { useNavigationGuard } from "@/hooks/useNavigationGuard";
 import { StepBar } from "@/components/layout/StepBar";
 import Link from "next/link";
-import type { Chapter, SourceGap } from "@/lib/types";
+import type { Chapter, Project, SourceGap } from "@/lib/types";
 
 const STRATEGY_LABELS: Record<string, string> = {
   auto: "KI-Kapitelplanung",
@@ -18,16 +18,27 @@ const STRATEGY_LABELS: Record<string, string> = {
 
 const CHAPTER_STATUS: Record<string, string> = { planned: "Geplant", approved: "Freigegeben" };
 
+/** Parse the stored planning_prompt string back into modal fields. */
+function parsePlanningPrompt(raw: string): Partial<PlanPromptResult> {
+  const goal =
+    raw.match(/^ZIEL:\s*(.+?)(?=\nZIELGRUPPE:|\nGEWÜNSCHTE|\nSCHWERPUNKTE:|$)/ms)?.[1]?.trim() ?? "";
+  const audience = raw.match(/ZIELGRUPPE:\s*(.+)/)?.[1]?.trim();
+  const slideCountRaw = raw.match(/GEWÜNSCHTE FOLIENANZAHL:\s*(\d+)/)?.[1];
+  const slideCount = slideCountRaw ? Number(slideCountRaw) : undefined;
+  const focus = raw.match(/SCHWERPUNKTE:\s*(.+)/)?.[1]?.trim();
+  return { goal, audience, slideCount, focus };
+}
+
 export default function ChaptersPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   return (
     <ProjectLoader projectId={id}>
-      {(project) => <ChaptersContent projectId={id} projectName={project.name} />}
+      {(project) => <ChaptersContent projectId={id} project={project} />}
     </ProjectLoader>
   );
 }
 
-function ChaptersContent({ projectId, projectName }: { projectId: string; projectName: string }) {
+function ChaptersContent({ projectId, project }: { projectId: string; project: Project }) {
   const { data: chapters, isLoading, error } = useChapters(projectId);
   const { data: sources } = useSources(projectId);
   const { data: sourceGaps } = useSourceGaps(projectId);
@@ -113,11 +124,16 @@ function ChaptersContent({ projectId, projectName }: { projectId: string; projec
     });
   };
 
+  // Pre-fill modal from stored planning_prompt (enables 1-click reproduction)
+  const storedInitialValues = project.planning_prompt
+    ? parsePlanningPrompt(project.planning_prompt)
+    : undefined;
+
   // ── Render ────────────────────────────────────────────────────────
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold">Kapitelplanung — {projectName}</h1>
+      <h1 className="text-2xl font-bold">Kapitelplanung — {project.name}</h1>
       <StepBar projectId={projectId} currentStep="chapters" />
 
       {/* Loading */}
@@ -426,10 +442,11 @@ function ChaptersContent({ projectId, projectName }: { projectId: string; projec
         </div>
       )}
 
-      {/* Plan prompt modal */}
+      {/* Plan prompt modal — pre-filled with last-used planning goal */}
       {pendingStrategy && (
         <PlanPromptModal
           strategyLabel={STRATEGY_LABELS[pendingStrategy] ?? pendingStrategy}
+          initialValues={storedInitialValues}
           onCancel={() => setPendingStrategy(null)}
           onSubmit={(result) => {
             const feedbackStr = buildFeedbackString(result);

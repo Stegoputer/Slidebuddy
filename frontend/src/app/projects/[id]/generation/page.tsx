@@ -1,51 +1,64 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useCallback, useEffect, useState } from "react";
 import { ProjectLoader } from "@/components/ProjectLoader";
 import { useSlides, useGenerateSingle, useGenerateChapter } from "@/hooks/useSlides";
 import { useSections } from "@/hooks/useSections";
 import { useChapters } from "@/hooks/useChapters";
+import { useSettings } from "@/hooks/useSettings";
 import { useNavigationGuard } from "@/hooks/useNavigationGuard";
 import { SlideCard } from "@/components/SlideCard";
 import { StepBar } from "@/components/layout/StepBar";
+import { api } from "@/lib/api";
 import Link from "next/link";
-import type { Slide, SectionPlan, Chapter } from "@/lib/types";
+import type { Project, Slide, SectionPlan, Chapter } from "@/lib/types";
 
 const LENGTH_LABEL: Record<string, string> = { short: "Kurz", medium: "Mittel", long: "Ausführlich" };
-const BATCH_OPTIONS = [1, 2, 4, 8];
 
 export default function GenerationPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   return (
     <ProjectLoader projectId={id}>
       {(project) => (
-        <GenerationContent
-          projectId={id}
-          projectName={project.name}
-          defaultTextLength={project.global_text_length ?? "medium"}
-        />
+        <GenerationContent project={project} projectId={id} />
       )}
     </ProjectLoader>
   );
 }
 
 function GenerationContent({
+  project,
   projectId,
-  projectName,
-  defaultTextLength,
 }: {
+  project: Project;
   projectId: string;
-  projectName: string;
-  defaultTextLength: string;
 }) {
+  const defaultTextLength = project.global_text_length ?? "medium";
+
   const { data: slides, isLoading: slidesLoading, error: slidesError } = useSlides(projectId);
   const { data: sections, isLoading: sectionsLoading, error: sectionsError } = useSections(projectId);
   const { data: chapters, isLoading: chaptersLoading, error: chaptersError } = useChapters(projectId);
+  const { data: settings } = useSettings();
   const generateSingle = useGenerateSingle(projectId);
   const generateChapter = useGenerateChapter(projectId);
 
   const [textLength, setTextLength] = useState(defaultTextLength);
   const [batchSize, setBatchSize] = useState(4);
+  const [batchInput, setBatchInput] = useState("4");
+
+  // Ziel-Karte state
+  const [editingGoal, setEditingGoal] = useState(false);
+  const [goalDraft, setGoalDraft] = useState("");
+  const [currentGoal, setCurrentGoal] = useState(project.planning_prompt ?? null);
+
+  // Sync batchSize from preferences once settings are loaded
+  useEffect(() => {
+    const prefBatch = settings?.preferences?.batch_size;
+    if (typeof prefBatch === "number" && prefBatch > 0) {
+      setBatchSize(prefBatch);
+      setBatchInput(String(prefBatch));
+    }
+  }, [settings?.preferences?.batch_size]);
   const [generatingChapterIdx, setGeneratingChapterIdx] = useState<number | null>(null);
   const [slideErrors, setSlideErrors] = useState<Record<string, string>>({});
 
@@ -65,6 +78,17 @@ function GenerationContent({
 
   // Group generated slides by chapter using chapter_id → chapter_index mapping
   const slidesByChapter = groupSlidesByChapter(slides ?? [], chapters ?? []);
+
+  // ── Save goal ────────────────────────────────────────────────────────────
+
+  const saveGoal = useCallback(async (newGoal: string) => {
+    try {
+      await api.put(`/projects/${projectId}`, { planning_prompt: newGoal });
+      setCurrentGoal(newGoal);
+    } catch (err) {
+      console.error("Failed to save goal:", err);
+    }
+  }, [projectId]);
 
   // ── Generate all chapters sequentially ──────────────────────────────────
 
@@ -117,8 +141,56 @@ function GenerationContent({
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold">Generierung — {projectName}</h1>
+      <h1 className="text-2xl font-bold">Generierung — {project.name}</h1>
       <StepBar projectId={projectId} currentStep="generation" />
+
+      {/* Ziel der Präsentation */}
+      {currentGoal && (
+        <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wide">
+              Ziel der Präsentation
+            </span>
+            {!editingGoal && (
+              <button
+                onClick={() => { setGoalDraft(currentGoal); setEditingGoal(true); }}
+                className="text-xs text-[var(--accent)] hover:underline"
+              >
+                Bearbeiten
+              </button>
+            )}
+          </div>
+          {editingGoal ? (
+            <div className="space-y-2 mt-2">
+              <textarea
+                value={goalDraft}
+                onChange={(e) => setGoalDraft(e.target.value)}
+                rows={3}
+                className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-page)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/40 resize-none"
+                autoFocus
+              />
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => setEditingGoal(false)}
+                  className="text-xs text-[var(--text-secondary)] hover:underline"
+                >
+                  Abbrechen
+                </button>
+                <button
+                  onClick={() => { saveGoal(goalDraft); setEditingGoal(false); }}
+                  className="px-3 py-1 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-light)] text-white text-xs font-semibold transition-colors"
+                >
+                  Speichern
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap line-clamp-4">
+              {currentGoal}
+            </p>
+          )}
+        </div>
+      )}
 
       {isLoading && (
         <div className="flex items-center gap-3 py-8 justify-center">
@@ -167,16 +239,25 @@ function GenerationContent({
 
             <div className="flex items-center gap-2">
               <label className="text-xs text-[var(--text-secondary)] whitespace-nowrap">Folien pro KI-Aufruf</label>
-              <select
-                value={batchSize}
-                onChange={(e) => setBatchSize(Number(e.target.value))}
+              <input
+                type="number"
+                min={1}
+                max={20}
+                value={batchInput}
+                onChange={(e) => {
+                  setBatchInput(e.target.value);
+                  const n = parseInt(e.target.value, 10);
+                  if (!isNaN(n) && n >= 1 && n <= 20) setBatchSize(n);
+                }}
+                onBlur={() => {
+                  // Clamp and normalize on blur
+                  const n = Math.max(1, Math.min(20, parseInt(batchInput, 10) || batchSize));
+                  setBatchSize(n);
+                  setBatchInput(String(n));
+                }}
                 disabled={isGenerating}
-                className="px-3 py-1.5 rounded-lg bg-[var(--bg-main)] border border-[var(--border-subtle)] text-sm focus:border-[var(--accent)] focus:outline-none disabled:opacity-50"
-              >
-                {BATCH_OPTIONS.map((n) => (
-                  <option key={n} value={n}>{n}</option>
-                ))}
-              </select>
+                className="w-16 px-2 py-1.5 rounded-lg bg-[var(--bg-main)] border border-[var(--border-subtle)] text-sm text-center focus:border-[var(--accent)] focus:outline-none disabled:opacity-50"
+              />
             </div>
 
             {!allDone && (

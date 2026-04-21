@@ -65,7 +65,7 @@ def plan(project_id: str, conn=Depends(get_db)):
 
     # Build per-chapter work items (no DB access inside the worker — threads
     # can't safely share sqlite connections, and we want pure LLM work there)
-    def _prepare(chapter) -> tuple[int, dict, list[str], dict[str, str]]:
+    def _prepare(chapter) -> tuple[int, dict, list[str], dict[str, str], str]:
         chapter_dict = {
             "title": chapter.title or "",
             "summary": chapter.summary or "",

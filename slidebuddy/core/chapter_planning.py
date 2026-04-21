@@ -1,6 +1,7 @@
 """Chapter planning node — LLM-based chapter structure with integrated gap analysis."""
 
 import logging
+import re
 
 from slidebuddy.config.defaults import load_preferences
 
@@ -45,6 +46,7 @@ def plan_chapters(
     source_summaries: list[str],
     project_override: dict | None = None,
     user_feedback: str | None = None,
+    density: dict | None = None,
 ) -> dict:
     """Plan chapter structure with integrated source gap analysis.
 
@@ -82,6 +84,15 @@ def plan_chapters(
 
     if rag_context:
         user_parts.append(f"\nQUELLENÜBERBLICK (Stichproben aus allen hochgeladenen Dateien):\n{rag_context}")
+
+    if density:
+        user_parts.append(
+            "\nSTRUKTURVORGABEN:"
+            f"\n- Ca. {density['suggested_chapters']} Kapitel (maximal {density['max_chapters']})"
+            f"\n- Ca. {density['target_slides_per_chapter']} Folien pro Kapitel"
+            f"\n- Maximal {density['max_total_slides']} Folien INSGESAMT (nicht pro Kapitel)"
+            f"\n- Mindestens {density['min_slides_per_chapter']} Folien pro Kapitel"
+        )
 
     if user_feedback:
         user_parts.append(f"\nUSER-FEEDBACK ZUR ÜBERARBEITUNG:\n{user_feedback}")
@@ -489,16 +500,75 @@ def _fallback_deterministic_split(sources: list) -> dict:
 
 
 def _source_title(source) -> str:
-    """Extract a clean title from a source's filename."""
+    """Extract a meaningful title from a source.
+
+    Priority:
+    1. YouTube: real video title stored in filename (or short URL fallback).
+    2. URL/DOI filenames: extract title from first meaningful line of original_text.
+    3. Regular filenames: strip extension + clean underscores/hyphens.
+    Fallback: try original_text first line before giving up.
+    """
+    fn = source.filename or ""
+
+    # --- YouTube ---
     if source.source_type == "youtube":
-        raw = source.filename
-        # If filename is still a URL (legacy sources before title fix), extract video ID
-        if raw.startswith("http"):
-            return f"YouTube: {raw.split('=')[-1][:40]}" if "=" in raw else f"YouTube: {raw[-40:]}"
-        return raw  # Real title from metadata
-    if "." in source.filename:
-        return source.filename.rsplit(".", 1)[0]
-    return source.filename
+        if fn.startswith("http"):
+            # Legacy: URL stored as filename — extract video ID as label
+            return f"YouTube: {fn.split('=')[-1][:40]}" if "=" in fn else f"YouTube: {fn[-40:]}"
+        return fn  # Real title from metadata
+
+    # --- Detect URL or DOI as filename (not human-readable) ---
+    is_url = fn.startswith(("http://", "https://", "doi:"))
+    is_doi = bool(re.match(r"^\d{2}\.\d{4,}/", fn))  # e.g. 10.1038/nature12345
+    is_opaque = is_url or is_doi
+
+    # For URL/DOI filenames, always try to extract from content first
+    if is_opaque:
+        title = _extract_title_from_text(source.original_text or "")
+        if title:
+            return title
+        # Show a short, readable version of the URL/DOI
+        if is_doi:
+            return f"DOI: {fn[:80]}"
+        # URL: strip scheme and show host + path snippet
+        clean_url = re.sub(r"^https?://", "", fn)
+        return f"Quelle: {clean_url[:70]}" if len(clean_url) > 70 else f"Quelle: {clean_url}"
+
+    # --- Regular filename ---
+    base = fn.rsplit(".", 1)[0] if "." in fn else fn
+    # Replace underscores and hyphens with spaces for readability
+    clean = re.sub(r"[_\-]+", " ", base).strip()
+    if clean:
+        return clean
+
+    return fn
+
+
+def _extract_title_from_text(text: str) -> str:
+    """Try to extract a title from the first meaningful lines of text.
+
+    Returns the first line that looks like a title (short, no trailing period,
+    not a page number or pure number).  Returns "" if nothing suitable is found.
+    """
+    if not text:
+        return ""
+    for line in text.splitlines()[:30]:
+        line = line.strip()
+        if not line:
+            continue
+        # Skip pure numbers (page numbers, years alone)
+        if re.match(r"^\d+\.?$", line):
+            continue
+        # Skip very short fragments
+        if len(line) < 8:
+            continue
+        # Skip very long lines (paragraph text, not a title)
+        if len(line) > 220:
+            continue
+        # Prefer lines that do NOT end with a period (titles usually don't)
+        # but accept them if nothing else fits — handled by early return
+        return line[:150]
+    return ""
 
 
 def _format_source_summaries(summaries: list[str]) -> str:

@@ -298,8 +298,19 @@ function GenerationTab() {
   const clearLog = useClearDebugLog();
 
   const prefs = (settings?.preferences ?? {}) as Record<string, unknown>;
-  const [batchSize, setBatchSize] = useState((prefs.batch_size as number) ?? 4);
+  const [batchSize, setBatchSize] = useState<number>(4);
+  const [batchInput, setBatchInput] = useState("4");
   const [debugOn, setDebugOn] = useState((prefs.debug_prompts as boolean) ?? false);
+
+  // Sync batchSize from loaded preferences (useState won't re-init after first render)
+  useEffect(() => {
+    const v = prefs.batch_size as number | undefined;
+    if (typeof v === "number" && v > 0) {
+      setBatchSize(v);
+      setBatchInput(String(v));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings]);
 
   const handleSaveBatch = () => {
     updateSettings.mutate({ ...prefs, batch_size: batchSize });
@@ -329,13 +340,25 @@ function GenerationTab() {
             Folien pro Batch
             <HelpIcon text="Anzahl Folien pro LLM-Aufruf. 3–5 ist optimal: reduziert API-Kosten und hält Antwortzeiten kurz. Bei 1 wird jede Folie einzeln generiert." />
           </label>
-          <input
-            type="range" min={1} max={8} value={batchSize}
-            onChange={(e) => setBatchSize(Number(e.target.value))}
-            className="w-full accent-[var(--accent)]"
-          />
-          <div className="flex justify-between text-xs text-[var(--text-secondary)]">
-            <span>1</span><span>{batchSize}</span><span>8</span>
+          <div className="flex items-center gap-3">
+            <input
+              type="number"
+              min={1}
+              max={20}
+              value={batchInput}
+              onChange={(e) => {
+                setBatchInput(e.target.value);
+                const n = parseInt(e.target.value, 10);
+                if (!isNaN(n) && n >= 1 && n <= 20) setBatchSize(n);
+              }}
+              onBlur={() => {
+                const n = Math.max(1, Math.min(20, parseInt(batchInput, 10) || batchSize));
+                setBatchSize(n);
+                setBatchInput(String(n));
+              }}
+              className="w-20 px-3 py-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-main)] text-sm text-center focus:border-[var(--accent)] focus:outline-none"
+            />
+            <span className="text-sm text-[var(--text-secondary)]">Folien (1–20, empfohlen: 3–5)</span>
           </div>
           <SaveButton onClick={handleSaveBatch} pending={updateSettings.isPending} />
         </Card>

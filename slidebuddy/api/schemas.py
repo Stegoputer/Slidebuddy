@@ -24,6 +24,7 @@ class ProjectUpdate(BaseModel):
     global_text_length: Optional[str] = None
     prompt_override: Optional[str] = None
     llm_config: Optional[str] = None
+    planning_prompt: Optional[str] = None
 
 
 class ProjectOut(BaseModel):
@@ -34,6 +35,7 @@ class ProjectOut(BaseModel):
     global_text_length: str
     prompt_override: Optional[str] = None
     llm_config: Optional[str] = None
+    planning_prompt: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

@@ -8,6 +8,7 @@ export interface Project {
   global_text_length: string;
   prompt_override?: string | null;
   llm_config?: string | null;
+  planning_prompt?: string | null;
   created_at: string;
   updated_at: string;
 }
