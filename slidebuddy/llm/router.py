@@ -41,6 +41,9 @@ _FALLBACK_MODELS = {
         "gemini-2.5-flash",
         "gemini-2.5-pro",
     ],
+    "cerebras": [
+        "gpt-oss-120b",
+    ],
 }
 
 
@@ -64,6 +67,8 @@ def get_llm(task: str = "generation", model_override: Optional[str] = None):
         llm = _get_openai(model_name, api_key, temperature, timeout)
     elif provider == "google":
         llm = _get_google(model_name, api_key, temperature, timeout)
+    elif provider == "cerebras":
+        llm = _get_cerebras(model_name, api_key, temperature, timeout)
     else:
         llm = _get_anthropic(model_name, api_key, temperature, timeout)
 
@@ -76,6 +81,8 @@ def _detect_provider(model_name: str) -> str:
     lower = model_name.lower()
     if "claude" in lower or "anthropic" in lower:
         return "anthropic"
+    if "gpt-oss" in lower:  # Cerebras-hosted OpenAI open-source models (e.g. gpt-oss-120b)
+        return "cerebras"
     if "gpt" in lower or "o1" in lower or "o3" in lower or "o4" in lower:
         return "openai"
     if "gemini" in lower:
@@ -107,6 +114,19 @@ def _get_openai(model: str, api_key: str, temperature: float, timeout: int = 90)
 def _get_google(model: str, api_key: str, temperature: float, timeout: int = 90):
     from langchain_google_genai import ChatGoogleGenerativeAI
     return ChatGoogleGenerativeAI(model=model, google_api_key=api_key, temperature=temperature, timeout=timeout)
+
+
+def _get_cerebras(model: str, api_key: str, temperature: float, timeout: int = 90):
+    from langchain_openai import ChatOpenAI
+    # Cerebras is OpenAI-compatible; runs ~30x faster → aggressive timeout
+    cerebras_timeout = max(15, timeout // 4)
+    return ChatOpenAI(
+        model=model,
+        api_key=api_key,
+        base_url="https://api.cerebras.ai/v1",
+        temperature=temperature,
+        timeout=cerebras_timeout,
+    )
 
 
 def get_available_providers() -> list[str]:
@@ -157,6 +177,16 @@ def get_provider_models() -> dict[str, list[str]]:
     else:
         result["google"] = _FALLBACK_MODELS["google"]
 
+    # Cerebras — fetch from API
+    if api_keys.get("cerebras"):
+        try:
+            result["cerebras"] = _fetch_cerebras_models(api_keys["cerebras"])
+        except Exception as e:
+            logger.warning(f"Failed to fetch Cerebras models: {e}")
+            result["cerebras"] = _FALLBACK_MODELS["cerebras"]
+    else:
+        result["cerebras"] = _FALLBACK_MODELS["cerebras"]
+
     _models_cache = result
     return result
 
@@ -183,6 +213,15 @@ def _fetch_openai_models(api_key: str) -> list[str]:
         if any(m.id.startswith(p) for p in chat_prefixes)
     )
     return chat_models if chat_models else _FALLBACK_MODELS["openai"]
+
+
+def _fetch_cerebras_models(api_key: str) -> list[str]:
+    """Fetch available models from Cerebras API (OpenAI-compatible endpoint)."""
+    import openai
+    client = openai.OpenAI(api_key=api_key, base_url="https://api.cerebras.ai/v1")
+    models = client.models.list()
+    model_ids = sorted(m.id for m in models.data)
+    return model_ids if model_ids else _FALLBACK_MODELS["cerebras"]
 
 
 def _fetch_google_models(api_key: str) -> list[str]:

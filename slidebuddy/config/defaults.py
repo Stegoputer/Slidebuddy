@@ -9,7 +9,7 @@ _logger = logging.getLogger(__name__)
 PREFERENCES_PATH = Path.home() / ".slidebuddy" / "preferences.json"
 
 _KEYRING_SERVICE = "slidebuddy"
-_API_KEY_PROVIDERS = ("anthropic", "openai", "google")
+_API_KEY_PROVIDERS = ("anthropic", "openai", "google", "cerebras")
 
 DEFAULT_PREFERENCES = {
     "default_language": "de",

@@ -99,6 +99,7 @@ const PROVIDERS = [
   { key: "anthropic", name: "Anthropic", desc: "Claude-Modelle" },
   { key: "openai", name: "OpenAI", desc: "GPT + Embeddings" },
   { key: "google", name: "Google AI", desc: "Gemini-Modelle" },
+  { key: "cerebras", name: "Cerebras", desc: "Schnell-Inferenz (~3k T/s)" },
 ];
 
 function ApiKeysTab() {
@@ -123,7 +124,7 @@ function ApiKeysTab() {
       </p>
 
       {/* Status overview */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-4 gap-3">
         {PROVIDERS.map(({ key, name, desc }) => {
           const active = apiKeys?.[key] ?? false;
           return (
@@ -204,6 +205,13 @@ function ApiKeysTab() {
 
 /* ─── Tab 2: Modelle ────────────────────────────────────────────────── */
 
+const PROVIDER_LABELS: Record<string, string> = {
+  anthropic: "Anthropic",
+  openai: "OpenAI",
+  google: "Google AI",
+  cerebras: "Cerebras (schnell)",
+};
+
 function ModelsTab() {
   const { data: settings } = useSettings();
   const { data: modelMap } = useModels();
@@ -212,16 +220,15 @@ function ModelsTab() {
   const prefs = (settings?.preferences ?? {}) as Record<string, unknown>;
   const defaultModels = (prefs.default_models ?? {}) as Record<string, string>;
 
-  const allModels: string[] = modelMap
-    ? Object.values(modelMap).flat()
-    : [];
+  const groups: Record<string, string[]> = modelMap ?? {};
+  const hasModels = Object.values(groups).some((m) => m.length > 0);
 
   const [planning, setPlanning] = useState(defaultModels.planning ?? "");
   const [generation, setGeneration] = useState(defaultModels.generation ?? "");
   const [masterAnalysis, setMasterAnalysis] = useState(defaultModels.master_analysis ?? "");
   const [embedding, setEmbedding] = useState(defaultModels.embedding ?? "text-embedding-3-small");
 
-  if (!allModels.length) {
+  if (!hasModels) {
     return (
       <Card>
         <p className="text-[var(--warning)]">Keine Modelle verfügbar. Bitte zuerst API-Keys eintragen.</p>
@@ -237,7 +244,6 @@ function ModelsTab() {
     updateSettings.mutate(updated);
   };
 
-  // Show short name for metrics
   const short = (m: string) => m?.split("/").pop() ?? "—";
 
   return (
@@ -252,13 +258,13 @@ function ModelsTab() {
       </div>
 
       <Card className="space-y-4">
-        <ModelSelect label="Kapitel- & Sektionsplanung" value={planning} options={allModels} onChange={setPlanning} help="Wird für Kapitel- und Sektionsplanung verwendet. Schnellere Modelle reichen aus, da kein langer Text erzeugt wird." />
-        <ModelSelect label="Slide-Generierung" value={generation} options={allModels} onChange={setGeneration} help="Erstellt Folieninhalt, Titel und Sprechernoten. Stärkere Modelle liefern deutlich bessere Qualität." />
-        <ModelSelect label="Master-Analyse (Layout-Erkennung)" value={masterAnalysis} options={allModels} onChange={setMasterAnalysis} help="Analysiert PPTX-Layouts beim Upload eines Masters und erkennt Template-Strukturen und Platzhalter." />
+        <ModelSelect label="Kapitel- & Sektionsplanung" value={planning} groups={groups} onChange={setPlanning} help="Wird für Kapitel- und Sektionsplanung verwendet. Schnellere Modelle reichen aus, da kein langer Text erzeugt wird." />
+        <ModelSelect label="Slide-Generierung" value={generation} groups={groups} onChange={setGeneration} help="Erstellt Folieninhalt, Titel und Sprechernoten. Stärkere Modelle liefern deutlich bessere Qualität." />
+        <ModelSelect label="Master-Analyse (Layout-Erkennung)" value={masterAnalysis} groups={groups} onChange={setMasterAnalysis} help="Analysiert PPTX-Layouts beim Upload eines Masters und erkennt Template-Strukturen und Platzhalter." />
         <ModelSelect
           label="Embedding-Modell"
           value={embedding}
-          options={["text-embedding-3-small", "text-embedding-3-large"]}
+          groups={{ OpenAI: ["text-embedding-3-small", "text-embedding-3-large"] }}
           onChange={setEmbedding}
           help="Erzeugt Vektoren für die semantische Quellensuche (RAG). 'small' ist schneller und günstiger, 'large' ist präziser bei komplexen Inhalten."
         />
@@ -268,8 +274,8 @@ function ModelsTab() {
   );
 }
 
-function ModelSelect({ label, value, options, onChange, help }: {
-  label: string; value: string; options: string[]; onChange: (v: string) => void; help?: string;
+function ModelSelect({ label, value, groups, onChange, help }: {
+  label: string; value: string; groups: Record<string, string[]>; onChange: (v: string) => void; help?: string;
 }) {
   return (
     <div>
@@ -281,9 +287,15 @@ function ModelSelect({ label, value, options, onChange, help }: {
         onChange={(e) => onChange(e.target.value)}
         className="w-full bg-[var(--bg-main)] border border-[var(--border-subtle)] rounded-lg px-3 py-2 text-sm"
       >
-        {options.map((m) => (
-          <option key={m} value={m}>{m}</option>
-        ))}
+        {Object.entries(groups).map(([provider, models]) =>
+          models.length === 0 ? null : (
+            <optgroup key={provider} label={PROVIDER_LABELS[provider] ?? provider}>
+              {models.map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </optgroup>
+          )
+        )}
       </select>
     </div>
   );
