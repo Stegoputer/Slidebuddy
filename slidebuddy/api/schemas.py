@@ -107,10 +107,12 @@ class SectionPlanOut(BaseModel):
 
 
 class SlidePlanItem(BaseModel):
+    title: str = ""
     template_type: str = ""
     brief: str = ""
     prompt: Optional[str] = None
     reused_slide_id: Optional[str] = None
+    source_indices: list[int] = []
     chunks: list[dict] = []
 
 

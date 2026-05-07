@@ -1,12 +1,110 @@
-"""Section planning node — detailed slide plans with template assignment per chapter."""
+"""Slide planning per chapter — single-shot, deterministic, index-based.
+
+Given a chapter (with its assigned source_ids), build an ordered, indexed
+pool of source chunks and ask the LLM in one call to produce slide titles,
+briefs, template assignments, and explicit `source_indices` referring back
+into the pool. Code resolves those indices into concrete chunk text — no
+post-hoc vector search per slide, no second blind retrieval pass.
+
+If the model omits or returns invalid indices for a slide, a deterministic
+fallback splits the pool sequentially across the slides so the chapter
+still has slides backed by content (the same idea as the old full-source
+mode, used as a safety net rather than a separate code path).
+"""
+
+from __future__ import annotations
 
 import logging
+import time as _t
 
 from slidebuddy.config.defaults import load_preferences
+from slidebuddy.rag.chunk_pool import PoolChunk, build_chapter_pool, render_pool_block
 
 logger = logging.getLogger(__name__)
 
 
+def plan_chapter_slides(
+    project_id: str,
+    chapter: dict,
+    language: str,
+    source_ids: list[str] | None = None,
+    project_override: dict | None = None,
+    user_feedback: str | None = None,
+) -> dict:
+    """Plan a chapter's slides in one LLM call backed by an indexed source pool.
+
+    Args:
+        project_id: project ID (used to read chunks from ChromaDB).
+        chapter: dict with title, summary, estimated_slide_count, key_topics.
+        language: target language ('de' or 'en').
+        source_ids: list of source IDs assigned to this chapter. If empty,
+            the LLM plans from chapter metadata only and slides receive no
+            chunks (the same behaviour you'd get for a chapter with no
+            uploaded sources today).
+        project_override: optional project-level prompt overrides.
+        user_feedback: optional user feedback for iteration.
+
+    Returns:
+        Dict with `slides` (list with title, brief, template_type,
+        source_indices, chunks) and `reasoning`. Also includes
+        `pool_size` and `used_headline_map` for debug/UI.
+    """
+    from slidebuddy.llm.prompt_assembler import assemble_prompt
+    from slidebuddy.llm.router import get_llm
+
+    prefs = load_preferences()
+    planning_prefs = prefs.get("planning", {})
+    pool_token_budget = int(planning_prefs.get("pool_token_budget", 25000))
+
+    pool, used_map = build_chapter_pool(
+        project_id=project_id,
+        chapter=chapter,
+        source_ids=source_ids or [],
+        pool_token_budget=pool_token_budget,
+    )
+
+    system_prompt = assemble_prompt(
+        phase="section_planning",
+        project_override=project_override,
+    )
+
+    user_prompt = _build_user_prompt(
+        chapter=chapter,
+        pool=pool,
+        language=language,
+        user_feedback=user_feedback,
+    )
+
+    llm = get_llm("planning")
+    result = _invoke_with_parse_retry(
+        llm=llm,
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        label="section_planning",
+    )
+
+    slides = result.get("slides") if isinstance(result, dict) else None
+    if not isinstance(slides, list):
+        slides = []
+
+    estimated = max(1, int(chapter.get("estimated_slide_count") or 5))
+    if not slides:
+        slides = _deterministic_fallback_slides(chapter, pool, estimated)
+
+    _attach_chunks(slides, pool)
+
+    out = {
+        "slides": slides,
+        "reasoning": result.get("reasoning", "") if isinstance(result, dict) else "",
+        "pool_size": len(pool),
+        "used_headline_map": used_map,
+    }
+    return out
+
+
+# Backwards-compat alias: existing callers (and tests) expect `plan_sections`.
+# The chunk_mode / source_texts / extra_chunks parameters are no longer used —
+# the function self-fetches and decides on a single deterministic strategy.
 def plan_sections(
     project_id: str,
     chapter: dict,
@@ -18,76 +116,66 @@ def plan_sections(
     chunk_mode: str = "chunk",
     source_texts: dict[str, str] | None = None,
 ) -> dict:
-    """Plan detailed slide structure for a single chapter.
-
-    Args:
-        project_id: Project ID for RAG queries.
-        chapter: Dict with 'title', 'summary', 'estimated_slide_count', 'key_topics'.
-        language: Target language.
-        project_override: Optional project-level prompt overrides.
-        user_feedback: Optional user feedback for iteration.
-        extra_chunks: Optional pre-fetched chunks to use.
-        source_ids: Source IDs linked to this chapter (for hybrid/full_source modes).
-        chunk_mode: "chunk" | "hybrid" | "full_source" — controls chunk assignment.
-        source_texts: Mapping of source_id → original_text (for full_source mode).
-
-    Returns:
-        Dict with 'slides' (list of slide plans) and 'reasoning'.
-    """
-    # Route full_source mode to its own content-driven planner. The generic
-    # path below is blind to the actual text — it only sees chapter metadata,
-    # which in full_source mode causes hallucinated briefs that don't match
-    # the segment the slide will actually show.
-    if chunk_mode == "full_source" and source_ids and source_texts:
-        combined = "\n\n".join(
-            source_texts[sid] for sid in source_ids if source_texts.get(sid)
-        )
-        if combined.strip():
-            return _plan_sections_full_source(
-                chapter=chapter,
-                source_text=combined,
-                language=language,
-                project_override=project_override,
-                user_feedback=user_feedback,
-            )
-        logger.warning(
-            "full_source mode requested but no source text available — falling back to generic planning",
-        )
-
-    from langchain_core.messages import HumanMessage, SystemMessage
-    from slidebuddy.llm.invoke_helpers import invoke_with_retry
-    from slidebuddy.llm.prompt_assembler import assemble_prompt
-    from slidebuddy.llm.response_parser import parse_llm_json
-    from slidebuddy.llm.router import get_llm
-
-    system_prompt = assemble_prompt(
-        phase="section_planning",
+    return plan_chapter_slides(
+        project_id=project_id,
+        chapter=chapter,
+        language=language,
+        source_ids=source_ids,
         project_override=project_override,
+        user_feedback=user_feedback,
     )
 
-    rag = load_preferences().get("rag", {})
 
-    user_parts = [
-        f"KAPITEL: {chapter['title']}",
+def _build_user_prompt(
+    chapter: dict,
+    pool: list[PoolChunk],
+    language: str,
+    user_feedback: str | None,
+) -> str:
+    lang_label = "Deutsch" if language == "de" else "English"
+    key_topics = ", ".join(chapter.get("key_topics") or []) or "—"
+    estimated = max(1, int(chapter.get("estimated_slide_count") or 5))
+
+    parts = [
+        f"KAPITEL: {chapter.get('title', '')}",
         f"ZUSAMMENFASSUNG: {chapter.get('summary', '')}",
-        f"GESCHÄTZTE FOLIENANZAHL: {chapter.get('estimated_slide_count', 5)}",
-        f"KERNTHEMEN: {', '.join(chapter.get('key_topics', []))}",
+        f"KERNTHEMEN: {key_topics}",
+        f"SPRACHE: {lang_label}",
+        f"GEWÜNSCHTE FOLIENANZAHL: {estimated}",
+        "",
+        "Plane GENAU diese Anzahl Folien. Verteile dabei die Quellinhalte sinnvoll —",
+        "jede Folie soll inhaltlich aus dem Pool unten stammen. Erfinde nichts.",
+        "",
+        "Pro Folie lieferst du:",
+        '  - "title": prägnanter Folientitel',
+        '  - "brief": 2–3 Sätze, was konkret auf der Folie steht (NICHT generisch)',
+        '  - "template_type": passendes Template aus der Liste',
+        '  - "source_indices": Liste der Pool-Indizes, die diese Folie inhaltlich abdeckt',
+        "",
+        "Regeln für source_indices:",
+        "  - Jede Folie MUSS mindestens einen Index nennen, sofern der Pool nicht leer ist.",
+        "  - Folge möglichst der Reihenfolge der Indizes (roter Faden).",
+        "  - Mehrere Folien dürfen denselben Index referenzieren, wenn das Material dicht ist.",
+        "  - Verwende NUR Indizes, die im Pool unten existieren (0-basiert).",
+        "",
+        f"INDEXIERTER QUELLPOOL ({len(pool)} Einträge):",
+        "---",
+        render_pool_block(pool),
+        "---",
     ]
 
     if user_feedback:
-        user_parts.append(f"\nUSER-FEEDBACK ZUR ÜBERARBEITUNG:\n{user_feedback}")
+        parts.append(f"\nUSER-FEEDBACK ZUR ÜBERARBEITUNG:\n{user_feedback}")
 
-    user_prompt = "\n".join(user_parts)
+    return "\n".join(parts)
 
-    llm = get_llm("planning")
 
-    import time as _t
+def _invoke_with_parse_retry(llm, system_prompt: str, user_prompt: str, label: str) -> dict:
+    from langchain_core.messages import HumanMessage, SystemMessage
+    from slidebuddy.llm.invoke_helpers import invoke_with_retry
     from slidebuddy.llm.prompt_logger import log_llm_call
+    from slidebuddy.llm.response_parser import parse_llm_json
 
-    # Parse-Retry: Wenn der LLM kaputtes JSON liefert (z.B. halluziniertes Token
-    # mitten im Response), bekommt er einen gezielten Korrektur-Hinweis und darf
-    # es noch einmal versuchen. invoke_with_retry deckt nur Netzwerkfehler ab.
-    result = None
     last_parse_error: str | None = None
     for attempt in range(2):
         messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
@@ -101,15 +189,12 @@ def plan_sections(
             ))
 
         _start = _t.perf_counter()
-        response = invoke_with_retry(llm, messages, label="section_planning")
+        response = invoke_with_retry(llm, messages, label=label)
         _dur = _t.perf_counter() - _start
-        log_llm_call(
-            "section_planning", system_prompt, user_prompt, response.content, _dur,
-        )
+        log_llm_call(label, system_prompt, user_prompt, response.content, _dur)
 
         try:
-            result = parse_llm_json(response.content, required_fields=["slides"])
-            break
+            return parse_llm_json(response.content, required_fields=["slides"])
         except ValueError as e:
             last_parse_error = str(e)
             logger.warning(
@@ -119,189 +204,103 @@ def plan_sections(
             if attempt == 1:
                 raise
 
-    # Per-slide chunk assignment using the configured mode.
-    # Uses generation settings (n_chunks_per_slide) since chunks feed into generation.
-    from slidebuddy.rag.retrieval import assign_chunks_for_slide
-
-    n_per_slide = rag.get("n_chunks_per_slide", 3)
-    slides = result.get("slides", [])
-    total_slides = len(slides)
-
-    for slide_index, slide in enumerate(slides):
-        if slide.get("chunks"):
-            continue  # LLM already assigned chunks — respect it
-
-        brief = slide.get("brief", "").strip()
-        slide_query = brief if brief else chapter["title"]
-
-        if n_per_slide > 0:
-            slide_chunks = assign_chunks_for_slide(
-                project_id=project_id,
-                query=slide_query,
-                source_ids=source_ids or [],
-                mode=chunk_mode,
-                n_results=n_per_slide,
-                source_texts=source_texts,
-                slide_index=slide_index,
-                total_slides=total_slides,
-            )
-        else:
-            slide_chunks = []
-
-        slide["chunks"] = [
-            {
-                "text": c["text"],
-                "distance": c.get("distance"),
-                "selected": True,
-                "metadata": c.get("metadata", {}),
-            }
-            for c in slide_chunks
-        ]
-
-    return result
+    raise RuntimeError("unreachable")  # pragma: no cover
 
 
-# ---------------------------------------------------------------------------
-# Full-source mode — content-driven planning
-# ---------------------------------------------------------------------------
+def _attach_chunks(slides: list[dict], pool: list[PoolChunk]) -> None:
+    """Resolve `source_indices` into `chunks` for each slide.
 
-
-def _split_into_segments(text: str, n: int) -> list[str]:
-    """Split text into N roughly equal, sequential segments.
-
-    Delegates to the shared utility in text_utils — kept as a private alias
-    so existing callers in this module don't break.
+    Three cases:
+      1. LLM produced valid indices → resolve them to chunks directly.
+      2. LLM produced no/invalid indices but pool is non-empty → assign
+         pool chunks sequentially (slide i gets the i-th block of pool
+         chunks, computed by splitting [0..pool_size) into N equal parts).
+         This guarantees every slide is backed by real source chunks.
+      3. Pool is empty → slide.chunks stays empty (chapter has no sources
+         in the project at all).
     """
-    from slidebuddy.core.text_utils import split_into_segments
-    return split_into_segments(text, n)
+    n = len(slides)
 
+    if not pool:
+        for slide in slides:
+            slide.setdefault("source_indices", [])
+            slide.setdefault("chunks", [])
+        return
 
-def _plan_sections_full_source(
-    chapter: dict,
-    source_text: str,
-    language: str,
-    project_override: dict | None = None,
-    user_feedback: str | None = None,
-) -> dict:
-    """Content-driven section planning with full source text context.
+    pool_size = len(pool)
 
-    The LLM sees the complete chapter source text and freely plans
-    slide structure based on content — no mechanical pre-splitting.
-    Text segments are assigned to slides afterwards for generation.
-    """
-    from langchain_core.messages import HumanMessage, SystemMessage
-    from slidebuddy.llm.invoke_helpers import invoke_with_retry
-    from slidebuddy.llm.prompt_assembler import assemble_prompt
-    from slidebuddy.llm.prompt_logger import log_llm_call
-    from slidebuddy.llm.response_parser import parse_llm_json
-    from slidebuddy.llm.router import get_llm
-
-    planning = load_preferences().get("planning", {})
-    min_chars = planning.get("min_chars_per_slide", 1500)
-    min_per_ch = planning.get("min_slides_per_chapter", 3)
-    estimated = max(min_per_ch, int(chapter.get("estimated_slide_count") or 5))
-    # Cap by text length, but never go below the configured minimum per chapter
-    max_from_text = max(1, len(source_text.strip()) // min_chars) if source_text.strip() else estimated
-    n_slides = max(min_per_ch, min(estimated, max_from_text))
-
-    if not source_text.strip():
-        return {"slides": [], "reasoning": "Kein Quelltext vorhanden."}
-
-    lang_label = "Deutsch" if language == "de" else "English"
-
-    system_prompt = assemble_prompt(
-        phase="section_planning",
-        project_override=project_override,
-    )
-
-    user_parts = [
-        f"KAPITEL: {chapter['title']}",
-        f"ZUSAMMENFASSUNG: {chapter.get('summary', '')}",
-        f"SPRACHE: {lang_label}",
-        "",
-        f"Erstelle exakt {n_slides} Folien basierend auf dem folgenden Quelltext.",
-        "Jede Folie muss inhaltlich aus dem Text stammen — nichts erfinden.",
-        "Halte einen roten Faden: jede Folie baut logisch auf der vorherigen auf.",
-        "Keine inhaltlichen Wiederholungen zwischen Folien.",
-        "",
-        "Pro Folie lieferst du:",
-        '  - "title": praegnanter Folientitel',
-        '  - "brief": 2-3 Saetze was auf dieser Folie stehen soll (konkret, nicht generisch)',
-        '  - "template_type": passendes Template aus der Liste',
-        "",
-        f"QUELLTEXT ({len(source_text)} Zeichen):",
-        "---",
-        source_text,
-        "---",
-    ]
-    if user_feedback:
-        user_parts.append(f"\nZIEL DES USERS:\n{user_feedback}")
-
-    user_prompt = "\n".join(user_parts)
-
-    llm = get_llm("planning")
-
-    import time as _t
-    result: dict | None = None
-    last_parse_error: str | None = None
-    for attempt in range(2):
-        messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
-        if attempt > 0 and last_parse_error:
-            messages.append(HumanMessage(
-                content=(
-                    f"Deine letzte Antwort war kein gültiges JSON ({last_parse_error}). "
-                    f"Antworte NUR mit {{\"slides\": [...]}} — exakt {n_slides} Folien, "
-                    "keine Erklärungen, keine Code-Fences."
-                )
-            ))
-        _start = _t.perf_counter()
-        response = invoke_with_retry(llm, messages, label="section_planning_full_source")
-        _dur = _t.perf_counter() - _start
-        log_llm_call(
-            "section_planning_full_source", system_prompt, user_prompt, response.content, _dur,
-        )
-        try:
-            result = parse_llm_json(response.content, required_fields=["slides"])
-            break
-        except ValueError as e:
-            last_parse_error = str(e)
-            logger.warning(
-                "Full-source section planning JSON parse failed (attempt %d/2): %s",
-                attempt + 1, e,
-            )
-            if attempt == 1:
-                raise
-
-    slides = result.get("slides", []) if isinstance(result, dict) else []
-
-    # Pad or truncate to match expected count
-    if len(slides) < n_slides:
-        for i in range(len(slides), n_slides):
-            slides.append({
-                "title": f"{chapter['title']} — Teil {i + 1}",
-                "brief": "",
-                "template_type": "detail",
-            })
-    elif len(slides) > n_slides:
-        slides = slides[:n_slides]
-
-    # Attach the full chapter source text as chunk for each slide.
-    # The slide brief tells the generator what to focus on — the full text
-    # ensures enough context. Splitting into tiny segments (~150 tokens)
-    # would starve the generator of usable content.
     for i, slide in enumerate(slides):
-        slide["chunks"] = [{
-            "text": source_text,
-            "distance": 0.0,
-            "selected": True,
-            "metadata": {
-                "mode": "full_source",
-                "segment_index": i,
-                "segment_count": len(slides),
-            },
-        }]
+        raw = slide.get("source_indices") or []
+        valid_idx: list[int] = []
+        seen: set[int] = set()
+        for v in raw:
+            try:
+                idx = int(v)
+            except (ValueError, TypeError):
+                continue
+            if 0 <= idx < pool_size and idx not in seen:
+                seen.add(idx)
+                valid_idx.append(idx)
 
+        if not valid_idx:
+            # Sequential fallback: slide i covers a contiguous slice of the pool.
+            # `max(start + 1, end)` ensures every slide gets at least one chunk
+            # even when n_slides > pool_size (slides at the tail wrap to the last).
+            start = (i * pool_size) // n
+            end = ((i + 1) * pool_size) // n
+            if end <= start:
+                # n > pool_size — wrap to a single chunk based on slide index
+                valid_idx = [min(pool_size - 1, i)]
+            else:
+                valid_idx = list(range(start, end))
+
+        slide["source_indices"] = valid_idx
+        slide["chunks"] = [_chunk_payload(pool[idx], idx) for idx in valid_idx]
+
+
+def _chunk_payload(c: PoolChunk, pool_idx: int) -> dict:
+    # distance=None signalisiert "kein Vector-Score" — die Zuordnung kam vom
+    # LLM per Index, nicht aus Similarity-Search. Die UI nutzt
+    # metadata.pool_index, um diese als "LLM-Auswahl" zu labeln statt
+    # eine irreführende 100%-Relevanz anzuzeigen.
     return {
-        "slides": slides,
-        "reasoning": result.get("reasoning", "") if isinstance(result, dict) else "",
+        "text": c.text,
+        "distance": None,
+        "selected": True,
+        "metadata": {
+            "source_id": c.source_id,
+            "filename": c.filename,
+            "chunk_index": c.chunk_index,
+            "headline": c.headline,
+            "pool_index": pool_idx,
+        },
     }
+
+
+def _deterministic_fallback_slides(
+    chapter: dict, pool: list[PoolChunk], n_slides: int,
+) -> list[dict]:
+    """If the LLM returned no slides at all, build a stub plan from the pool."""
+    title = chapter.get("title") or "Kapitel"
+    if not pool:
+        return [{
+            "title": f"{title} — Teil {i + 1}",
+            "brief": "",
+            "template_type": "detail",
+            "source_indices": [],
+        } for i in range(n_slides)]
+
+    pool_size = len(pool)
+    slides: list[dict] = []
+    for i in range(n_slides):
+        start = (i * pool_size) // n_slides
+        end = ((i + 1) * pool_size) // n_slides
+        idxs = list(range(start, max(start + 1, end)))
+        idxs = [j for j in idxs if 0 <= j < pool_size]
+        slides.append({
+            "title": f"{title} — Teil {i + 1}",
+            "brief": "",
+            "template_type": "detail",
+            "source_indices": idxs,
+        })
+    return slides

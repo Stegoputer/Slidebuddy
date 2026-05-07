@@ -61,10 +61,12 @@ export interface SlidePlanChunk {
 }
 
 export interface SlidePlan {
+  title?: string;
   template_type: string;
   brief: string;
   prompt?: string | null;
   reused_slide_id?: string | null;
+  source_indices?: number[];
   chunks?: SlidePlanChunk[];
 }
 

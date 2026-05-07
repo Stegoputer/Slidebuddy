@@ -7,15 +7,13 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from slidebuddy.config.defaults import load_preferences
-from slidebuddy.core.section_planning import plan_sections
+from slidebuddy.core.section_planning import plan_chapter_slides
 from slidebuddy.core.progress import delete_steps_after
 from slidebuddy.db.queries import (
     get_all_section_plans,
     get_chapters_for_project,
     get_project,
     get_section_plan,
-    get_sources_for_project,
     save_section_plan,
 )
 
@@ -71,19 +69,9 @@ def plan(project_id: str, conn=Depends(get_db)):
     if not chapters:
         raise HTTPException(400, "No chapters planned yet")
 
-    prefs = load_preferences()
-    chunk_mode = prefs.get("rag", {}).get("chunk_assignment_mode", "chunk")
-
-    # Load sources once — needed for full_source mode and hybrid
-    source_text_map: dict[str, str] = {
-        src.id: src.original_text
-        for src in get_sources_for_project(conn, project_id)
-        if src.original_text
-    }
-
     # Build per-chapter work items (no DB access inside the worker — threads
     # can't safely share sqlite connections, and we want pure LLM work there)
-    def _prepare(chapter) -> tuple[int, dict, list[str], dict[str, str], str]:
+    def _prepare(chapter) -> tuple[int, dict, list[str]]:
         chapter_dict = {
             "title": chapter.title or "",
             "summary": chapter.summary or "",
@@ -95,47 +83,22 @@ def plan(project_id: str, conn=Depends(get_db)):
             chapter_source_ids = json.loads(chapter.source_ids) if chapter.source_ids else []
         except (json.JSONDecodeError, TypeError):
             pass
-        # Parse optional source_segment (set by full_source_split strategy)
-        source_segment = None
-        if chapter.source_segment:
-            try:
-                source_segment = json.loads(chapter.source_segment)
-            except (json.JSONDecodeError, TypeError):
-                pass
-
-        # Auto-detect full_source mode: if chapter has a source_segment
-        # (set by full_source_split strategy), use its text slice regardless
-        # of the global chunk_assignment_mode setting.
-        has_segment = source_segment and len(source_segment) == 2
-        effective_mode = "full_source" if has_segment else chunk_mode
-
-        source_texts: dict[str, str] = {}
-        if effective_mode == "full_source" and chapter_source_ids:
-            for sid in chapter_source_ids:
-                if sid in source_text_map:
-                    text = source_text_map[sid]
-                    if has_segment:
-                        start, end = source_segment
-                        text = text[start:end]
-                    source_texts[sid] = text
-        return chapter.chapter_index, chapter_dict, chapter_source_ids, source_texts, effective_mode
+        return chapter.chapter_index, chapter_dict, chapter_source_ids
 
     work_items = [(ch, _prepare(ch)) for ch in chapters]
 
     def _run_one(prepared):
-        idx, chapter_dict, chapter_source_ids, source_texts, effective_mode = prepared
+        idx, chapter_dict, chapter_source_ids = prepared
         logger.info(
-            "Section planning ch=%d mode=%s sources=%d",
-            idx, effective_mode, len(chapter_source_ids),
+            "Section planning ch=%d sources=%d",
+            idx, len(chapter_source_ids),
         )
-        return plan_sections(
+        return plan_chapter_slides(
             project_id=project_id,
             chapter=chapter_dict,
             language=project.language,
             project_override=project.parsed_override,
             source_ids=chapter_source_ids,
-            chunk_mode=effective_mode,
-            source_texts=source_texts,
             user_feedback=_strip_planning_directives(project.planning_prompt),
         )
 
@@ -145,24 +108,45 @@ def plan(project_id: str, conn=Depends(get_db)):
     plan_results: dict[int, dict] = {}
     errors: list[dict] = []
 
+    # Hard ceiling per chapter so a single hung LLM call cannot block the
+    # whole request indefinitely. The LLM SDK has its own timeout (120s per
+    # call, see llm/router.py); this is the outer wall-clock guard for the
+    # full chapter slot including retries.
+    PER_CHAPTER_TIMEOUT_SECONDS = 600
+
     with ThreadPoolExecutor(max_workers=min(4, len(work_items) or 1)) as executor:
         future_map = {
             executor.submit(_run_one, prepared): chapter
             for chapter, prepared in work_items
         }
-        for future in as_completed(future_map):
-            chapter = future_map[future]
-            try:
-                plan_results[chapter.chapter_index] = future.result()
-            except Exception as e:
-                logger.error(
-                    "Section planning failed for chapter %d: %s",
-                    chapter.chapter_index, e, exc_info=True,
-                )
+        try:
+            for future in as_completed(future_map, timeout=PER_CHAPTER_TIMEOUT_SECONDS * len(work_items)):
+                chapter = future_map[future]
+                try:
+                    plan_results[chapter.chapter_index] = future.result(timeout=PER_CHAPTER_TIMEOUT_SECONDS)
+                except Exception as e:
+                    logger.error(
+                        "Section planning failed for chapter %d: %s",
+                        chapter.chapter_index, e, exc_info=True,
+                    )
+                    errors.append({
+                        "chapter_index": chapter.chapter_index,
+                        "title": chapter.title,
+                        "error": str(e),
+                    })
+        except TimeoutError as e:
+            unfinished = [
+                future_map[f].chapter_index for f in future_map if not f.done()
+            ]
+            logger.error("Section planning hit overall timeout — unfinished chapters: %s", unfinished)
+            for f in future_map:
+                if not f.done():
+                    f.cancel()
+            for idx in unfinished:
                 errors.append({
-                    "chapter_index": chapter.chapter_index,
-                    "title": chapter.title,
-                    "error": str(e),
+                    "chapter_index": idx,
+                    "title": "",
+                    "error": f"Timeout nach {PER_CHAPTER_TIMEOUT_SECONDS}s pro Kapitel",
                 })
 
     # DB-Writes sequentiell im Main-Thread (sqlite ist nicht thread-safe)

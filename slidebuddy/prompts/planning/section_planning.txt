@@ -1,28 +1,42 @@
 SEKTIONSPLANUNG (EBENE 2):
 
-Erstelle für das folgende Kapitel einen detaillierten Folienplan. Weise jeder Folie ein Template zu.
+Du erhältst ein Kapitel mit einem indizierten QUELLPOOL. Plane für dieses
+Kapitel die exakt geforderte Anzahl Folien — jede Folie muss inhaltlich aus
+dem Pool stammen. Erfinde keine Inhalte, die nicht im Pool stehen.
 
-Verwende AUSSCHLIESSLICH die Templates aus dem Abschnitt TEMPLATE-DEFINITIONEN weiter unten.
-Erfinde KEINE eigenen Template-Namen — nutze nur die dort aufgelisteten template_type Werte.
+Verwende AUSSCHLIESSLICH die Templates aus dem Abschnitt VERFUEGBARE TEMPLATES
+weiter unten. Erfinde KEINE eigenen Template-Namen — nutze nur die dort
+aufgelisteten template_type Werte.
 
 Für jede Folie definiere:
-- template_type: Welches Template verwendet wird (muss exakt einem der verfuegbaren Templates entsprechen)
-- brief: Kurzbeschreibung des Folieninhalts (1-2 Sätze)
-- reused_slide_id: ID einer wiederverwendbaren Slide aus der RAG-DB oder null
+- title: prägnanter Folientitel (kein generisches "Einleitung", "Übersicht")
+- brief: 2–3 Sätze, was konkret auf der Folie steht (NICHT generisch)
+- template_type: muss exakt einem verfuegbaren Template entsprechen
+- source_indices: Liste der Pool-Indizes (0-basiert, integer), die diese
+  Folie inhaltlich abdeckt. JEDE Folie referenziert mindestens einen Index,
+  sofern der Pool nicht leer ist.
 
-Antworte im JSON-Format:
+Antworte AUSSCHLIESSLICH im JSON-Format:
 {
     "slides": [
         {
-            "template_type": "str",
+            "title": "str",
             "brief": "str",
-            "reused_slide_id": "str | null"
+            "template_type": "str",
+            "source_indices": [int, ...]
         }
     ],
-    "reasoning": "Begründung für Template-Auswahl und Reihenfolge"
+    "reasoning": "Kurze Begründung für Reihenfolge und Index-Zuweisung"
 }
 
 RICHTLINIEN:
-- Template-Variation: NIEMALS mehr als 2 gleiche Templates in Folge. Nutze die volle Bandbreite der verfuegbaren Templates — variiere so stark wie moeglich.
-- Template-Auswahl passend zum Inhalt (Vergleiche → Vergleichs-Template, Schritte → Aufzaehlungs-Template, Details → Detail-Template, etc.)
-- Wenn RAG-Treffer gut passen, als reused_slide_id markieren
+- Index-Treue: Verwende NUR Indizes, die im Pool existieren. Keine erfundenen
+  Indizes, keine Negativzahlen, keine Strings.
+- Roter Faden: Folge wenn möglich der aufsteigenden Reihenfolge der Indizes.
+  Inhaltlich verwandte Indizes können auf eine Folie zusammengefasst werden;
+  ein dichter Index darf auf zwei Folien aufgeteilt werden.
+- Template-Variation: Niemals mehr als 2 gleiche Templates in Folge — variiere
+  passend zum Inhalt (Vergleiche → Vergleichs-Template, Schritte →
+  Aufzaehlungs-Template, Details → Detail-Template, Zitate → Zitat-Template).
+- Kein "reused_slide_id"-Feld in dieser Phase — Slide-Reuse passiert separat
+  in der Generierung.

@@ -4,6 +4,7 @@ import json
 import logging
 import sqlite3
 from io import BytesIO
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response, StreamingResponse
@@ -23,6 +24,17 @@ from ..schemas import SlideOut, SlideUpdate
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _content_disposition(name: str, ext: str) -> str:
+    """Build a Content-Disposition header that is safe for non-ASCII filenames.
+
+    HTTP/1.1 headers must be latin-1, so we use the RFC 5987 filename* parameter
+    for the full UTF-8 name and a plain ASCII fallback for older clients.
+    """
+    ascii_name = name.encode("ascii", "replace").decode("ascii").replace("?", "_")
+    utf8_name = quote(name, safe="")
+    return f'attachment; filename="{ascii_name}.{ext}"; filename*=UTF-8\'\'{utf8_name}.{ext}'
 
 
 @router.get("/{project_id}/slides", response_model=list[SlideOut])
@@ -70,7 +82,7 @@ def export_txt(project_id: str, conn=Depends(get_db)):
     return Response(
         content=text,
         media_type="text/plain; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="{project.name}.txt"'},
+        headers={"Content-Disposition": _content_disposition(project.name, "txt")},
     )
 
 
@@ -91,7 +103,7 @@ def export_pptx_file(project_id: str, conn=Depends(get_db)):
     return Response(
         content=pptx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        headers={"Content-Disposition": f'attachment; filename="{project.name}.pptx"'},
+        headers={"Content-Disposition": _content_disposition(project.name, "pptx")},
     )
 
 

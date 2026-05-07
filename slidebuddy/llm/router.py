@@ -50,16 +50,24 @@ _FALLBACK_MODELS = {
 def get_llm(task: str = "generation", model_override: Optional[str] = None):
     """Get LLM instance for the given task (cached per model+temperature)."""
     prefs = load_preferences()
-    model_name = model_override or prefs.get("default_models", {}).get(task, "claude-sonnet-4-20250514")
+    model_spec = model_override or prefs.get("default_models", {}).get(task, "claude-sonnet-4-20250514")
     temperature = _TASK_TEMPERATURES.get(task, 0.7)
     timeout = _TASK_TIMEOUTS.get(task, 90)
 
-    cache_key = (model_name, temperature, timeout)
+    cache_key = (model_spec, temperature, timeout)
     if cache_key in _llm_cache:
         return _llm_cache[cache_key]
 
-    provider = _detect_provider(model_name)
+    provider = _detect_provider(model_spec)
+    model_name = model_spec.split(":", 1)[1] if ":" in model_spec else model_spec
+
     api_key = get_api_key(provider)
+    if not api_key:
+        raise ValueError(
+            f"Kein API-Schlüssel für '{provider}' konfiguriert. "
+            f"Modell '{model_name}' (Task: {task}) benötigt einen {provider}-Key. "
+            f"Bitte unter Einstellungen → API-Keys eintragen."
+        )
 
     if provider == "anthropic":
         llm = _get_anthropic(model_name, api_key, temperature, timeout)
@@ -70,24 +78,42 @@ def get_llm(task: str = "generation", model_override: Optional[str] = None):
     elif provider == "cerebras":
         llm = _get_cerebras(model_name, api_key, temperature, timeout)
     else:
-        llm = _get_anthropic(model_name, api_key, temperature, timeout)
+        raise ValueError(f"Unbekannter Provider: {provider}")
 
     _llm_cache[cache_key] = llm
     return llm
 
 
-def _detect_provider(model_name: str) -> str:
-    """Detect provider from model name."""
-    lower = model_name.lower()
+_VALID_PROVIDERS = ("anthropic", "openai", "google", "cerebras")
+
+
+def _detect_provider(model_spec: str) -> str:
+    """Detect provider from model spec.
+
+    Supports "provider:model" prefix (preferred) and legacy bare model names.
+    Raises ValueError for unrecognized models instead of silently defaulting.
+    """
+    if ":" in model_spec:
+        provider = model_spec.split(":", 1)[0].lower()
+        if provider in _VALID_PROVIDERS:
+            return provider
+        raise ValueError(
+            f"Unbekannter Provider '{provider}' in '{model_spec}'. "
+            f"Gültige Provider: {', '.join(_VALID_PROVIDERS)}."
+        )
+
+    lower = model_spec.lower()
     if "claude" in lower or "anthropic" in lower:
         return "anthropic"
-    if "gpt-oss" in lower:  # Cerebras-hosted OpenAI open-source models (e.g. gpt-oss-120b)
-        return "cerebras"
     if "gpt" in lower or "o1" in lower or "o3" in lower or "o4" in lower:
         return "openai"
     if "gemini" in lower:
         return "google"
-    return "anthropic"
+
+    raise ValueError(
+        f"Provider für Modell '{model_spec}' nicht erkennbar. "
+        f"Bitte unter Einstellungen → Modelle neu auswählen."
+    )
 
 
 def clear_llm_cache():
@@ -202,15 +228,19 @@ def _fetch_anthropic_models(api_key: str) -> list[str]:
 
 
 def _fetch_openai_models(api_key: str) -> list[str]:
-    """Fetch available chat models from OpenAI API."""
+    """Fetch all chat/reasoning models from OpenAI API."""
     import openai
     client = openai.OpenAI(api_key=api_key)
     models = client.models.list()
-    # Filter to relevant chat models
-    chat_prefixes = ("gpt-4", "gpt-3.5", "o1", "o3", "o4")
+    _SKIP_PATTERNS = (
+        "embedding", "whisper", "tts", "dall-e", "moderation",
+        "audio", "image", "realtime", "transcribe", "search",
+        "babbage", "davinci-002", "curie", "ada",
+    )
     chat_models = sorted(
         m.id for m in models.data
-        if any(m.id.startswith(p) for p in chat_prefixes)
+        if not any(skip in m.id.lower() for skip in _SKIP_PATTERNS)
+        and not m.id.startswith("ft:")
     )
     return chat_models if chat_models else _FALLBACK_MODELS["openai"]
 
@@ -225,22 +255,22 @@ def _fetch_cerebras_models(api_key: str) -> list[str]:
 
 
 def _fetch_google_models(api_key: str) -> list[str]:
-    """Fetch available Gemini models from Google AI API."""
-    import google.generativeai as genai
-    genai.configure(api_key=api_key)
-    models = genai.list_models()
-    # Filter: only current gemini models that support generateContent
-    # Exclude deprecated/old versions (1.0, 001, embedding, aqa, etc.)
-    _SKIP_PATTERNS = ("gemini-1.0", "embedding", "aqa", "bisheng")
-    gemini_models = []
+    """Fetch available Gemini models via the modern google-genai SDK."""
+    from google import genai
+    client = genai.Client(api_key=api_key)
+    models = list(client.models.list())
+
+    _SKIP_PATTERNS = ("embedding", "aqa", "imagen", "veo", "tts", "image-generation")
+    gemini_models: list[str] = []
     for m in models:
-        name = m.name.replace("models/", "")
-        if "gemini" not in name:
+        name = (getattr(m, "name", "") or "").replace("models/", "")
+        if not name:
             continue
-        if "generateContent" not in (m.supported_generation_methods or []):
+        actions = getattr(m, "supported_actions", None) or getattr(m, "supported_generation_methods", None) or []
+        if "generateContent" not in actions:
             continue
-        if any(skip in name for skip in _SKIP_PATTERNS):
+        if any(skip in name.lower() for skip in _SKIP_PATTERNS):
             continue
         gemini_models.append(name)
-    return sorted(gemini_models) if gemini_models else _FALLBACK_MODELS["google"]
+    return sorted(set(gemini_models)) if gemini_models else _FALLBACK_MODELS["google"]
 

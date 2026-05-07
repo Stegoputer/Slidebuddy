@@ -12,7 +12,8 @@ def get_embedding_function():
     ONNX embedding model into RAM (~500MB-1GB).
     """
     prefs = load_preferences()
-    model = prefs.get("default_models", {}).get("embedding", "text-embedding-3-small")
+    model_spec = prefs.get("default_models", {}).get("embedding", "text-embedding-3-small")
+    model = model_spec.split(":", 1)[1] if ":" in model_spec else model_spec
 
     openai_key = get_api_key("openai")
     google_key = get_api_key("google")

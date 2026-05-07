@@ -24,6 +24,8 @@ def get_db() -> Generator[sqlite3.Connection, None, None]:
 
 def _llm_http_exception(exc: Exception, context: str = "LLM") -> HTTPException:
     """Map an LLM exception to an HTTPException with the correct status code."""
+    if isinstance(exc, ValueError):
+        return HTTPException(422, f"{context}: {exc}")
     err_str = str(exc).lower()
     if "timeout" in err_str or "deadline" in err_str:
         return HTTPException(504, f"{context}: Die KI-Anfrage hat zu lange gedauert. Bitte erneut versuchen.")
@@ -31,4 +33,6 @@ def _llm_http_exception(exc: Exception, context: str = "LLM") -> HTTPException:
         return HTTPException(401, f"{context}: API-Schlüssel ungültig oder abgelaufen.")
     if "rate" in err_str or "429" in err_str:
         return HTTPException(429, f"{context}: Zu viele Anfragen. Bitte kurz warten.")
+    if "credit" in err_str or "balance" in err_str or "billing" in err_str:
+        return HTTPException(402, f"{context}: API-Guthaben aufgebraucht. Bitte Konto beim Anbieter aufladen.")
     return HTTPException(500, f"{context} fehlgeschlagen: {exc}")

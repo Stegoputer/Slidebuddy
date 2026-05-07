@@ -28,23 +28,18 @@ DEFAULT_PREFERENCES = {
         "target_slides_per_chapter": 5,
         "max_chapters": 12,
         "min_slides_per_chapter": 3,
+        # Slide planning passes the chapter's full chunk pool to the LLM, indexed.
+        # If the pool exceeds this token budget, a headline-map step picks a subset.
+        "pool_token_budget": 25000,
     },
     "custom_prompts": {},
     "active_prompts": {},
     "rag": {
         "overview_sample_interval": 2,
         "overview_chars_per_chunk": 400,
-        "n_chunks_per_slide": 3,
         "n_global_generation": 0,
         "chunk_size": 500,
         "chunk_overlap": 20,
-        # How chunks are assigned to slides during section planning:
-        #   "chunk"       — Semantic search across all sources (default, flexible)
-        #   "hybrid"      — Semantic search within each chapter's linked sources,
-        #                   topped up with global results if needed
-        #   "full_source" — The full original text of each chapter's linked source
-        #                   is split sequentially across its slides (1:1 mapping)
-        "chunk_assignment_mode": "chunk",
     },
 }
 
@@ -168,12 +163,34 @@ def load_preferences() -> dict:
     if PREFERENCES_PATH.exists():
         with open(PREFERENCES_PATH, "r", encoding="utf-8") as f:
             stored = json.load(f)
-        merged = {**DEFAULT_PREFERENCES, **stored}
+        merged = _deep_merge_defaults(DEFAULT_PREFERENCES, stored)
         _preferences_cache = merged
         return merged
 
     _preferences_cache = DEFAULT_PREFERENCES.copy()
     return _preferences_cache
+
+
+def _deep_merge_defaults(defaults: dict, stored: dict) -> dict:
+    """Recursively merge stored preferences over defaults (one level deep for
+    nested dicts like ``planning`` and ``rag``).
+
+    A shallow merge would let a stored ``planning`` dict completely shadow
+    new keys we add to the default ``planning`` dict — so users with old
+    preferences.json files would silently miss new defaults. Going deeper
+    than one level is unnecessary here: settings have flat dict-of-scalars
+    sub-objects, never deeper trees.
+    """
+    out = dict(defaults)
+    for key, value in stored.items():
+        if (
+            isinstance(value, dict)
+            and isinstance(out.get(key), dict)
+        ):
+            out[key] = {**out[key], **value}
+        else:
+            out[key] = value
+    return out
 
 
 def save_preferences(prefs: dict) -> None:

@@ -21,12 +21,18 @@ function ReviewContent({ projectId, projectName }: { projectId: string; projectN
   const updateMutation = useUpdateSlide(projectId);
   const [downloading, setDownloading] = useState<"txt" | "pptx" | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   const handleDownload = async (format: "txt" | "pptx") => {
     setDownloading(format);
+    setDownloadError(null);
     try {
       const res = await fetch(`/api/projects/${projectId}/export/${format}`);
-      if (!res.ok) throw new Error("Export fehlgeschlagen");
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        setDownloadError(body?.detail ?? `Export fehlgeschlagen (HTTP ${res.status})`);
+        return;
+      }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -36,6 +42,7 @@ function ReviewContent({ projectId, projectName }: { projectId: string; projectN
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error(err);
+      setDownloadError("Netzwerkfehler beim Export");
     } finally {
       setDownloading(null);
     }
@@ -71,6 +78,11 @@ function ReviewContent({ projectId, projectName }: { projectId: string; projectN
                 {downloading === "pptx" ? "Wird exportiert..." : "Als PPTX herunterladen"}
               </button>
             </div>
+            {downloadError && (
+              <div className="rounded-xl border border-[var(--error)]/30 bg-[var(--error)]/5 p-3">
+                <p className="text-[var(--error)] text-sm">{downloadError}</p>
+              </div>
+            )}
           </div>
 
           <div className="space-y-4">

@@ -239,15 +239,21 @@ function SectionsContent({ projectId, projectName }: { projectId: string; projec
                       // Deduplicate chunks across slides by text content
                       const seen = new Set<string>();
                       const uniqueSelected: { text: string }[] = [];
+                      let anyChunkPresent = false;
                       for (const s of slides) {
                         for (const c of s.chunks ?? []) {
+                          anyChunkPresent = true;
                           if (c.selected !== false && !seen.has(c.text)) {
                             seen.add(c.text);
                             uniqueSelected.push(c);
                           }
                         }
                       }
-                      if (uniqueSelected.length === 0) return null;
+                      if (uniqueSelected.length === 0) {
+                        return anyChunkPresent
+                          ? " · keine Chunks selektiert"
+                          : " · keine Quellen zugewiesen";
+                      }
                       const totalTokens = uniqueSelected.reduce(
                         (sum, c) => sum + Math.ceil(c.text.length / 4), 0
                       );
@@ -265,7 +271,14 @@ function SectionsContent({ projectId, projectName }: { projectId: string; projec
                     >
                       {/* Slide header */}
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-[var(--accent-light)]">Folie {si + 1}</span>
+                        <div className="flex items-baseline gap-2 min-w-0">
+                          <span className="text-xs font-semibold text-[var(--accent-light)] shrink-0">Folie {si + 1}</span>
+                          {slide.title && (
+                            <span className="text-sm text-[var(--text-primary)] truncate" title={slide.title}>
+                              {slide.title}
+                            </span>
+                          )}
+                        </div>
 
                         {deleteConfirm?.chapterIdx === chIdx && deleteConfirm?.slideIdx === si ? (
                           <div className="flex gap-2">
@@ -495,6 +508,7 @@ function ChunkSection({
             const isSelected = chunk.selected !== false;
             const filename = chunk.metadata?.filename ?? "?";
             const chunkIndex = chunk.metadata?.chunk_index;
+            const fromLlmPool = chunk.metadata?.pool_index !== undefined && chunk.metadata?.pool_index !== null;
 
             return (
               <div
@@ -527,6 +541,10 @@ function ChunkSection({
                           "text-[var(--text-secondary)]"
                         }`}>
                           Relevanz: {relevance}%
+                        </span>
+                      ) : fromLlmPool ? (
+                        <span className="shrink-0 text-[var(--text-secondary)]">
+                          LLM-Auswahl
                         </span>
                       ) : (
                         <span className="shrink-0 text-[var(--text-secondary)] italic">

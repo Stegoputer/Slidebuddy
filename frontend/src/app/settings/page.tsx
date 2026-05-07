@@ -212,6 +212,15 @@ const PROVIDER_LABELS: Record<string, string> = {
   cerebras: "Cerebras (schnell)",
 };
 
+/** If a saved value lacks a "provider:" prefix, find the provider from the model lists. */
+function findPrefixed(bare: string, groups: Record<string, string[]>): string {
+  if (!bare || bare.includes(":")) return bare;
+  for (const [provider, models] of Object.entries(groups)) {
+    if (models.includes(bare)) return `${provider}:${bare}`;
+  }
+  return bare;
+}
+
 function ModelsTab() {
   const { data: settings } = useSettings();
   const { data: modelMap } = useModels();
@@ -223,10 +232,22 @@ function ModelsTab() {
   const groups: Record<string, string[]> = modelMap ?? {};
   const hasModels = Object.values(groups).some((m) => m.length > 0);
 
-  const [planning, setPlanning] = useState(defaultModels.planning ?? "");
-  const [generation, setGeneration] = useState(defaultModels.generation ?? "");
-  const [masterAnalysis, setMasterAnalysis] = useState(defaultModels.master_analysis ?? "");
+  const [planning, setPlanning] = useState(findPrefixed(defaultModels.planning ?? "", groups));
+  const [generation, setGeneration] = useState(findPrefixed(defaultModels.generation ?? "", groups));
+  const [masterAnalysis, setMasterAnalysis] = useState(findPrefixed(defaultModels.master_analysis ?? "", groups));
   const [embedding, setEmbedding] = useState(defaultModels.embedding ?? "text-embedding-3-small");
+
+  // Re-sync when settings or model list load asynchronously
+  useEffect(() => {
+    if (!settings?.preferences || !modelMap) return;
+    const dm = (settings.preferences as Record<string, unknown>).default_models as Record<string, string> | undefined;
+    if (!dm) return;
+    setPlanning(findPrefixed(dm.planning ?? "", modelMap));
+    setGeneration(findPrefixed(dm.generation ?? "", modelMap));
+    setMasterAnalysis(findPrefixed(dm.master_analysis ?? "", modelMap));
+    setEmbedding(dm.embedding ?? "text-embedding-3-small");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings, modelMap]);
 
   if (!hasModels) {
     return (
@@ -244,7 +265,10 @@ function ModelsTab() {
     updateSettings.mutate(updated);
   };
 
-  const short = (m: string) => m?.split("/").pop() ?? "—";
+  const short = (m: string) => {
+    const bare = m?.includes(":") ? m.split(":", 2)[1] : m;
+    return bare?.split("/").pop() ?? "—";
+  };
 
   return (
     <div className="space-y-4">
@@ -264,7 +288,7 @@ function ModelsTab() {
         <ModelSelect
           label="Embedding-Modell"
           value={embedding}
-          groups={{ OpenAI: ["text-embedding-3-small", "text-embedding-3-large"] }}
+          groups={{ openai: ["text-embedding-3-small", "text-embedding-3-large"] }}
           onChange={setEmbedding}
           help="Erzeugt Vektoren für die semantische Quellensuche (RAG). 'small' ist schneller und günstiger, 'large' ist präziser bei komplexen Inhalten."
         />
@@ -291,7 +315,7 @@ function ModelSelect({ label, value, groups, onChange, help }: {
           models.length === 0 ? null : (
             <optgroup key={provider} label={PROVIDER_LABELS[provider] ?? provider}>
               {models.map((m) => (
-                <option key={m} value={m}>{m}</option>
+                <option key={m} value={`${provider}:${m}`}>{m}</option>
               ))}
             </optgroup>
           )
@@ -460,6 +484,7 @@ function PlanungTab() {
     target_slides_per_chapter: (planning.target_slides_per_chapter as number) ?? 5,
     max_chapters: (planning.max_chapters as number) ?? 12,
     min_slides_per_chapter: (planning.min_slides_per_chapter as number) ?? 3,
+    pool_token_budget: (planning.pool_token_budget as number) ?? 25000,
   });
 
   const set = (key: string, val: number) => setForm((f) => ({ ...f, [key]: val }));
@@ -501,6 +526,20 @@ function PlanungTab() {
             <RangeInput label="Min. Folien pro Kapitel" value={form.min_slides_per_chapter} min={1} max={8} onChange={(v) => set("min_slides_per_chapter", v)} help="Jedes Kapitel bekommt mindestens so viele Folien." />
           </div>
         </div>
+
+        <hr className="border-[var(--border-subtle)]" />
+
+        <div>
+          <p className="font-semibold mb-1">Sektionsplanung — Quellpool-Budget</p>
+          <p className="text-xs text-[var(--text-secondary)] mb-3">
+            Pro Kapitel sieht der LLM den vollst&auml;ndigen, indizierten Quellpool und w&auml;hlt selbst die Chunks pro Folie aus.
+            Liegt der Pool ueber diesem Token-Budget, wird vorher ein kleiner Auswahl-Schritt (Headline-Map)
+            zwischengeschaltet, der relevante Indizes filtert. Default 25 000 reicht fuer die meisten Projekte.
+          </p>
+          <div className="grid grid-cols-2 gap-6">
+            <RangeInput label="Pool-Token-Budget" value={form.pool_token_budget} min={5000} max={80000} step={1000} onChange={(v) => set("pool_token_budget", v)} help="Schwellenwert in Tokens. Hoeher = mehr Material direkt in den Plan-Prompt, dafuer langsamer/teurer pro Kapitel. Niedriger = haeufigere Headline-Map (zusaetzlicher LLM-Call), dafuer kompakterer Plan-Prompt." />
+          </div>
+        </div>
       </Card>
 
       <SaveButton onClick={handleSave} pending={updateSettings.isPending} />
@@ -521,21 +560,17 @@ function RagTab() {
   const [form, setForm] = useState({
     overview_sample_interval: (rag.overview_sample_interval as number) ?? 4,
     overview_chars_per_chunk: (rag.overview_chars_per_chunk as number) ?? 200,
-    n_chunks_per_slide: (rag.n_chunks_per_slide as number) ?? 3,
     n_global_generation: (rag.n_global_generation as number) ?? 0,
     chunk_size: (rag.chunk_size as number) ?? 500,
     chunk_overlap: (rag.chunk_overlap as number) ?? 20,
   });
-  const [chunkMode, setChunkMode] = useState<string>(
-    (rag.chunk_assignment_mode as string) ?? "chunk"
-  );
 
   const set = (key: string, val: number) => setForm((f) => ({ ...f, [key]: val }));
 
   const handleSave = () => {
     updateSettings.mutate({
       ...prefs,
-      rag: { ...form, chunk_assignment_mode: chunkMode },
+      rag: { ...form },
     });
   };
 
@@ -545,8 +580,8 @@ function RagTab() {
 
       <div className="grid grid-cols-3 gap-3">
         <Metric label="Stichproben-Intervall" value={form.overview_sample_interval} />
-        <Metric label="Chunks/Folie" value={form.n_chunks_per_slide} />
         <Metric label="Chunk-Groesse" value={`${form.chunk_size} Tok`} />
+        <Metric label="Globale Slides" value={form.n_global_generation} />
       </div>
 
       <Card className="space-y-6">
@@ -562,32 +597,14 @@ function RagTab() {
 
         <hr className="border-[var(--border-subtle)]" />
 
-        {/* Section planning */}
+        {/* Generation */}
         <div>
-          <p className="font-semibold mb-1">Sektionsplanung (Chunk-Zuweisung)</p>
-          <p className="text-xs text-[var(--text-secondary)] mb-3">Automatische Zuweisung per Semantic Search. Wird manuell ueberprueft.</p>
-
-          {/* Chunk assignment mode */}
-          <div className="mb-4">
-            <label className="block text-sm mb-1.5">Zuweisungs-Modus</label>
-            <select
-              value={chunkMode}
-              onChange={(e) => setChunkMode(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-[var(--bg-main)] border border-[var(--border-subtle)] text-white focus:border-[var(--accent)] focus:outline-none"
-            >
-              <option value="chunk">Chunk (Semantic Search global)</option>
-              <option value="hybrid">Hybrid (pro Kapitel + global Auffuellung)</option>
-              <option value="full_source">Full Source (ganze Quelle sequentiell auf Folien)</option>
-            </select>
-            <p className="text-xs text-[var(--text-secondary)] mt-1.5">
-              <strong>Chunk:</strong> Vector-Search ueber alle Quellen (flexibel, Default).{" "}
-              <strong>Hybrid:</strong> Semantic Search innerhalb der verlinkten Quellen des Kapitels, ggf. global aufgefuellt.{" "}
-              <strong>Full Source:</strong> Der komplette Originaltext jeder verlinkten Quelle wird der Reihe nach auf die Folien des Kapitels verteilt — ideal fuer &quot;Je Quelle ein Kapitel&quot;.
-            </p>
-          </div>
-
+          <p className="font-semibold mb-1">Generierung (Stil-Referenzen)</p>
+          <p className="text-xs text-[var(--text-secondary)] mb-3">
+            Sektionsplanung sieht den vollst&auml;ndigen, indizierten Quellpool je Kapitel und w&auml;hlt selbst,
+            welche Pool-Indizes eine Folie speisen — keine separate Chunk-Zuweisung pro Folie n&ouml;tig.
+          </p>
           <div className="grid grid-cols-2 gap-6">
-            <RangeInput label="Chunks pro Folie" value={form.n_chunks_per_slide} min={1} max={10} onChange={(v) => set("n_chunks_per_slide", v)} help="Top-N relevanteste Chunks pro Slide aus allen Quellen. Diese werden in der Sektionsplanung angezeigt und koennen manuell bearbeitet werden. (Nicht fuer Full Source.)" />
             <RangeInput label="Globale Slides" value={form.n_global_generation} min={0} max={10} onChange={(v) => set("n_global_generation", v)} help="Referenz-Slides aus frueheren Projekten fuer Stil-Konsistenz bei der Generierung. 0 = deaktiviert." />
           </div>
         </div>
